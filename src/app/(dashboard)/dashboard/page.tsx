@@ -66,7 +66,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
           {[
             { icon: "📚", label: "Từ vựng", status: "Xem ngay", href: "/vocabulary", active: true },
-            { icon: "🃏", label: "Flashcard", status: "Sắp có", href: "#", active: false },
+            { icon: "🃏", label: "Flashcard", status: "Học ngay", href: "/flashcard", active: true },
             { icon: "✍️", label: "Trắc nghiệm", status: "Sắp có", href: "#", active: false },
             { icon: "📈", label: "Tiến độ", status: "Sắp có", href: "#", active: false },
           ].map((item) => (
