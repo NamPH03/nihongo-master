@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, limit, doc, updateDoc } from "firebase/firestore";
+import { useEffect, useState, useCallback } from "react";
+import {
+  collection, getDocs, query, where, limit,
+  doc, updateDoc,
+} from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { markNewWordLearned, updateProgress } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -19,18 +23,48 @@ type Vocabulary = {
   status: string;
 };
 
-// Bước học
-type Step = "flashcard" | "listening" | "kanji" | "result";
+type Step = "flashcard" | "meaning-to-word" | "listening" | "kanji" | "result";
+
+// Kiểm tra từ có chứa chữ Kanji không
+function hasKanji(text: string): boolean {
+  return /[\u4e00-\u9faf]/.test(text);
+}
+
+// Kiểm tra từ có giống cách đọc không (katakana/hiragana thuần)
+function isSameAsReading(word: string, reading: string): boolean {
+  return word === reading;
+}
+
+// Tạo 4 đáp án (1 đúng + 3 sai)
+function generateChoices(
+  correct: Vocabulary,
+  allWords: Vocabulary[],
+  type: "word" | "meaning"
+): string[] {
+  const others = allWords
+    .filter((w) => w.id !== correct.id)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+
+  const choices =
+    type === "word"
+      ? [correct.word, ...others.map((w) => w.word)]
+      : [correct.meaning, ...others.map((w) => w.meaning)];
+
+  return choices.sort(() => Math.random() - 0.5);
+}
 
 export default function LearnPage() {
   const [words, setWords] = useState<Vocabulary[]>([]);
+  const [allWords, setAllWords] = useState<Vocabulary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentStep, setCurrentStep] = useState<Step>("flashcard");
   const [isFlipped, setIsFlipped] = useState(false);
-  const [typedAnswer, setTypedAnswer] = useState("");
+  const [choices, setChoices] = useState<string[]>([]);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerStatus, setAnswerStatus] = useState<"idle" | "correct" | "wrong">("idle");
-  const [loading, setLoading] = useState(true);
   const [learnedCount, setLearnedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,21 +74,30 @@ export default function LearnPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // Lấy 10 từ chưa học
+  // Lấy từ cần học + toàn bộ từ để tạo đáp án sai
   useEffect(() => {
     const fetchWords = async () => {
       try {
-        const q = query(
+        // 10 từ mới để học
+        const newQ = query(
           collection(db, "vocabulary"),
           where("status", "==", "new"),
           limit(10)
         );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
+        const newSnap = await getDocs(newQ);
+        const newWords = newSnap.docs.map((d) => ({
+          id: d.id, ...d.data(),
         })) as Vocabulary[];
-        setWords(data);
+
+        // Lấy thêm từ để tạo đáp án sai
+        const allQ = query(collection(db, "vocabulary"), limit(100));
+        const allSnap = await getDocs(allQ);
+        const all = allSnap.docs.map((d) => ({
+          id: d.id, ...d.data(),
+        })) as Vocabulary[];
+
+        setWords(newWords);
+        setAllWords(all);
       } catch (err) {
         console.error(err);
       } finally {
@@ -66,150 +109,172 @@ export default function LearnPage() {
 
   const currentWord = words[currentIndex];
 
-  // Đánh dấu từ đã học trong Firebase
-  const markAsLearned = async (wordId: string) => {
-    try {
-      await updateDoc(doc(db, "vocabulary", wordId), {
-        status: "learned",
-      });
-    } catch (err) {
-      console.error("Lỗi cập nhật:", err);
+  // Tạo choices khi chuyển bước
+  const prepareChoices = useCallback((step: Step, word: Vocabulary) => {
+    if (step === "meaning-to-word") {
+      setChoices(generateChoices(word, allWords, "word"));
+    } else if (step === "listening") {
+      setChoices(generateChoices(word, allWords, "meaning"));
     }
+    setSelectedAnswer(null);
+    setAnswerStatus("idle");
+  }, [allWords]);
+
+  // Xác định bước tiếp theo
+  const getNextStep = (current: Step, word: Vocabulary): Step | "done" => {
+    if (current === "flashcard") return "meaning-to-word";
+    if (current === "meaning-to-word") return "listening";
+    if (current === "listening") {
+      return hasKanji(word.word) ? "kanji" : "done";
+    }
+    if (current === "kanji") return "done";
+    return "done";
   };
 
-  // Chuyển sang bước tiếp theo
+  // Chuyển sang từ tiếp theo hoặc kết thúc
+  const goNextWord = async () => {
+  // Dùng SR thay vì chỉ đánh dấu "learned"
+  await markNewWordLearned(currentWord.id);
+  const user = auth.currentUser;
+  if (user) await updateProgress(user.uid, 1);
+  setLearnedCount((p) => p + 1);
+
+  if (currentIndex + 1 >= words.length) {
+    setCurrentStep("result");
+  } else {
+    const nextIdx = currentIndex + 1;
+    setCurrentIndex(nextIdx);
+    setCurrentStep("flashcard");
+    setIsFlipped(false);
+    setSelectedAnswer(null);
+    setAnswerStatus("idle");
+  }
+};
+
+  // Chuyển bước
   const nextStep = async () => {
-    if (currentStep === "flashcard") {
-      setCurrentStep("listening");
-      setTypedAnswer("");
-      setAnswerStatus("idle");
-    } else if (currentStep === "listening") {
-      setCurrentStep("kanji");
-    } else if (currentStep === "kanji") {
-      // Xong 3 bước → đánh dấu đã học
-      await markAsLearned(currentWord.id);
-      setLearnedCount((p) => p + 1);
-
-      if (currentIndex + 1 >= words.length) {
-        setCurrentStep("result");
-      } else {
-        setCurrentIndex((p) => p + 1);
-        setCurrentStep("flashcard");
-        setIsFlipped(false);
-        setTypedAnswer("");
-        setAnswerStatus("idle");
-      }
-    }
-  };
-
-  // Kiểm tra đáp án phần nghe
-  const checkAnswer = () => {
-    const correct = currentWord.reading.trim();
-    const answer = typedAnswer.trim();
-    if (answer === correct) {
-      setAnswerStatus("correct");
+    const next = getNextStep(currentStep, currentWord);
+    if (next === "done") {
+      await goNextWord();
     } else {
-      setAnswerStatus("wrong");
+      setCurrentStep(next);
+      prepareChoices(next, currentWord);
+      setIsFlipped(false);
     }
   };
 
-  // Highlight từ trong câu ví dụ
-  const highlightWord = (example: string, word: string) => {
-    if (!example.includes(word)) return <span>{example}</span>;
-    const parts = example.split(word);
-    return (
-      <>
-        {parts[0]}
-        <span className="font-bold underline decoration-2 decoration-red-400">{word}</span>
-        {parts[1]}
-      </>
-    );
+  // Chọn đáp án trắc nghiệm
+  const handleChoice = (choice: string) => {
+    if (answerStatus !== "idle") return;
+    setSelectedAnswer(choice);
+    const correct =
+      currentStep === "meaning-to-word"
+        ? currentWord.word
+        : currentWord.meaning;
+    setAnswerStatus(choice === correct ? "correct" : "wrong");
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-4xl mb-4">⏳</div>
-          <p className="text-gray-400">Đang tải bài học...</p>
-        </div>
-      </div>
-    );
-  }
+  // Style nút đáp án
+  const choiceStyle = (choice: string) => {
+    const correct =
+      currentStep === "meaning-to-word"
+        ? currentWord.word
+        : currentWord.meaning;
+    if (answerStatus === "idle") {
+      return "border-2 border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50";
+    }
+    if (choice === correct) return "border-2 border-green-400 bg-green-50 text-green-700 font-bold";
+    if (choice === selectedAnswer) return "border-2 border-red-400 bg-red-50 text-red-600";
+    return "border-2 border-gray-200 bg-white text-gray-400";
+  };
 
-  if (words.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Tuyệt vời!</h2>
-          <p className="text-gray-500 mb-6">Bạn đã học hết tất cả từ vựng mới!</p>
-          <Link
-            href="/dashboard"
-            className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition"
-          >
-            Về Dashboard
-          </Link>
-        </div>
+  // Các bước hiển thị indicator
+  const stepList = (word: Vocabulary): Step[] => {
+    const steps: Step[] = ["flashcard", "meaning-to-word", "listening"];
+    if (word && hasKanji(word.word)) steps.push("kanji");
+    return steps;
+  };
+
+  const stepLabel: Record<Step, string> = {
+    "flashcard": "Thẻ",
+    "meaning-to-word": "Chọn từ",
+    "listening": "Nghe",
+    "kanji": "Kanji",
+    "result": "",
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-4xl mb-3">⏳</div>
+        <p className="text-gray-400">Đang tải bài học...</p>
       </div>
-    );
-  }
+    </div>
+  );
+
+  if (words.length === 0) return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
+        <div className="text-6xl mb-4">🎉</div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Tuyệt vời!</h2>
+        <p className="text-gray-500 mb-6">Bạn đã học hết tất cả từ mới!</p>
+        <Link href="/dashboard"
+          className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition">
+          Về Dashboard
+        </Link>
+      </div>
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-gray-100">
 
-      {/* Thanh menu */}
-      <nav className="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center">
+      {/* Menu */}
+      <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
         <Link href="/dashboard" className="flex items-center gap-2">
           <span className="text-2xl">🎌</span>
           <span className="text-xl font-bold text-red-600">Nihongo Master</span>
         </Link>
-        <span className="text-gray-400 text-sm">
-          {currentIndex + 1} / {words.length} từ
-        </span>
+        <span className="text-gray-400 text-sm">{currentIndex + 1} / {words.length} từ</span>
       </nav>
 
-      <div className="max-w-md mx-auto px-4 py-8">
+      <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Thanh tiến độ tổng */}
-        <div className="mb-6">
-          <div className="flex justify-between text-xs text-gray-400 mb-1">
-            <span>Tiến độ buổi học</span>
-            <span>{learnedCount}/{words.length} từ</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+        {/* Thanh tiến độ */}
+        <div className="mb-5">
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
             <div
-              className="bg-red-500 h-2 rounded-full transition-all"
+              className="bg-red-500 h-1.5 rounded-full transition-all"
               style={{ width: `${(learnedCount / words.length) * 100}%` }}
             />
           </div>
 
-          {/* 3 bước indicator */}
-          <div className="flex justify-center gap-3 mt-4">
-            {(["flashcard", "listening", "kanji"] as Step[]).map((step, i) => (
-              <div key={step} className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                  currentStep === step
-                    ? "bg-red-600 text-white scale-110"
-                    : i < ["flashcard", "listening", "kanji"].indexOf(currentStep)
-                    ? "bg-green-500 text-white"
-                    : "bg-gray-200 text-gray-400"
-                }`}>
-                  {i < ["flashcard", "listening", "kanji"].indexOf(currentStep) ? "✓" : i + 1}
+          {/* Step indicators */}
+          {currentStep !== "result" && currentWord && (
+            <div className="flex justify-center items-center gap-2">
+              {stepList(currentWord).map((step, i) => (
+                <div key={step} className="flex items-center gap-2">
+                  <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    currentStep === step
+                      ? "bg-red-600 text-white"
+                      : stepList(currentWord).indexOf(currentStep) > i
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-200 text-gray-400"
+                  }`}>
+                    {stepList(currentWord).indexOf(currentStep) > i ? "✓" : i + 1}
+                    <span className="ml-1">{stepLabel[step]}</span>
+                  </div>
+                  {i < stepList(currentWord).length - 1 && (
+                    <div className="w-4 h-0.5 bg-gray-300" />
+                  )}
                 </div>
-                {i < 2 && <div className="w-8 h-0.5 bg-gray-200" />}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-center gap-12 mt-1">
-            <span className="text-xs text-gray-400">Flashcard</span>
-            <span className="text-xs text-gray-400">Nghe</span>
-            <span className="text-xs text-gray-400">Kanji</span>
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ===== BƯỚC 1: FLASHCARD ===== */}
-        {currentStep === "flashcard" && (
+        {currentStep === "flashcard" && currentWord && (
           <div>
             <div
               onClick={() => setIsFlipped(!isFlipped)}
@@ -221,40 +286,48 @@ export default function LearnPage() {
                 transformStyle: "preserve-3d",
                 transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                 position: "relative",
-                height: "340px",
+                height: "300px",
               }}>
+
                 {/* Mặt trước */}
                 <div className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col items-center justify-center px-8 text-center"
                   style={{ backfaceVisibility: "hidden" }}>
-                  <div className="text-xs text-gray-300 mb-6 uppercase tracking-wide">Bấm để xem nghĩa</div>
-                  <div className="text-2xl text-gray-700 leading-relaxed mb-2">
-                    {highlightWord(currentWord.example, currentWord.word)}
+                  <div className="text-xs text-gray-300 mb-6 uppercase tracking-wide">
+                    Bấm để xem nghĩa
                   </div>
-                  <div className="text-gray-400 text-sm">{currentWord.exampleMeaning}</div>
+
+                  {/* Cách đọc — chỉ hiện nếu khác với từ */}
+                  {!isSameAsReading(currentWord.word, currentWord.reading) && (
+                    <div className="text-lg text-red-400 mb-2">
+                      {currentWord.reading}
+                    </div>
+                  )}
+
+                  {/* Từ tiếng Nhật */}
+                  <div className="text-6xl font-bold text-gray-900">
+                    {currentWord.word}
+                  </div>
                 </div>
 
                 {/* Mặt sau */}
                 <div className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col items-center justify-center px-8 text-center"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}>
-                  <div className="text-5xl font-bold text-gray-900 mb-3">{currentWord.word}</div>
-                  <div className="text-xl text-red-400 mb-2">{currentWord.reading}</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl text-gray-700">{currentWord.meaning}</span>
-                    <span className="text-xs bg-gray-100 text-gray-400 px-2 py-1 rounded-lg">{currentWord.type}</span>
+                  <div className="text-4xl font-bold text-gray-900 mb-3">
+                    {currentWord.meaning}
+                  </div>
+                  <div className="text-sm text-gray-400 bg-gray-100 px-3 py-1 rounded-lg">
+                    {currentWord.type}
                   </div>
                 </div>
               </div>
             </div>
 
-            {isFlipped && (
-              <button
-                onClick={nextStep}
-                className="w-full mt-6 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition"
-              >
-                Tiếp tục → Nghe & Gõ lại
+            {isFlipped ? (
+              <button onClick={nextStep}
+                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
+                Tiếp tục →
               </button>
-            )}
-            {!isFlipped && (
+            ) : (
               <p className="text-center text-gray-400 text-sm mt-4">
                 💡 Bấm vào thẻ để xem nghĩa
               </p>
@@ -262,22 +335,51 @@ export default function LearnPage() {
           </div>
         )}
 
-        {/* ===== BƯỚC 2: NGHE & GÕ LẠI ===== */}
-        {currentStep === "listening" && (
-          <div className="bg-white rounded-3xl shadow-sm p-8">
-            <div className="text-center mb-8">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
-                Bước 2 — Nghe & Gõ lại
+        {/* ===== BƯỚC 2: NHÌN NGHĨA → CHỌN TỪ ===== */}
+        {currentStep === "meaning-to-word" && currentWord && (
+          <div className="bg-white rounded-3xl shadow-sm p-6">
+            <div className="text-center mb-6">
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+                Chọn từ tiếng Nhật đúng
               </div>
-
-              {/* Hiển thị nghĩa — người dùng phải gõ cách đọc */}
-              <div className="text-3xl font-bold text-gray-900 mb-2">
+              <div className="text-3xl font-bold text-gray-900">
                 {currentWord.meaning}
               </div>
-              <div className="text-gray-400 text-sm mb-2">[{currentWord.type}]</div>
+              <div className="text-sm text-gray-400 mt-1">[{currentWord.type}]</div>
+            </div>
 
-              {/* Nút nghe */}
-              <div className="flex justify-center gap-4 my-6">
+            <div className="flex flex-col gap-3">
+              {choices.map((choice, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleChoice(choice)}
+                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
+                >
+                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <span className="text-lg">{choice}</span>
+                </button>
+              ))}
+            </div>
+
+            {answerStatus !== "idle" && (
+              <button onClick={nextStep}
+                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
+                Tiếp tục →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ===== BƯỚC 3: NGHE → CHỌN NGHĨA ===== */}
+        {currentStep === "listening" && currentWord && (
+          <div className="bg-white rounded-3xl shadow-sm p-6">
+            <div className="text-center mb-6">
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
+                Nghe và chọn nghĩa đúng
+              </div>
+              <div className="flex justify-center gap-4">
                 <button className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl hover:bg-gray-200 transition">
                   🔊
                 </button>
@@ -285,86 +387,68 @@ export default function LearnPage() {
                   🐢
                 </button>
               </div>
+              {/* Hiện từ nhỏ bên dưới nút nghe */}
+              <div className="text-gray-400 text-sm mt-3">
+                {currentWord.word} · {currentWord.reading}
+              </div>
             </div>
 
-            {/* Ô gõ đáp án */}
-            <div className="mb-4">
-              <label className="text-sm text-gray-500 mb-2 block text-center">
-                Gõ cách đọc bằng hiragana:
-              </label>
-              <input
-                type="text"
-                value={typedAnswer}
-                onChange={(e) => {
-                  setTypedAnswer(e.target.value);
-                  setAnswerStatus("idle");
-                }}
-                placeholder="Ví dụ: たべる"
-                className={`w-full px-4 py-3 border-2 rounded-xl text-center text-lg focus:outline-none transition ${
-                  answerStatus === "correct"
-                    ? "border-green-400 bg-green-50"
-                    : answerStatus === "wrong"
-                    ? "border-red-400 bg-red-50"
-                    : "border-gray-200 focus:border-red-400"
-                }`}
-              />
+            <div className="flex flex-col gap-3">
+              {choices.map((choice, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleChoice(choice)}
+                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
+                >
+                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <span>{choice}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Kết quả kiểm tra */}
-            {answerStatus === "correct" && (
-              <div className="text-center text-green-600 font-semibold mb-4">
-                ✅ Chính xác! — {currentWord.word} ({currentWord.reading})
-              </div>
-            )}
-            {answerStatus === "wrong" && (
-              <div className="text-center text-red-500 mb-4">
-                ❌ Chưa đúng — Đáp án: <span className="font-bold">{currentWord.reading}</span>
-              </div>
-            )}
-
-            {/* Nút kiểm tra / tiếp tục */}
-            {answerStatus === "idle" && (
-              <button
-                onClick={checkAnswer}
-                disabled={!typedAnswer.trim()}
-                className="w-full py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition disabled:opacity-40"
-              >
-                Kiểm tra
-              </button>
-            )}
             {answerStatus !== "idle" && (
-              <button
-                onClick={nextStep}
-                className="w-full py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition"
-              >
-                Tiếp tục → Xem Kanji
+              <button onClick={nextStep}
+                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
+                Tiếp tục →
               </button>
             )}
           </div>
         )}
 
-        {/* ===== BƯỚC 3: XEM NÉT KANJI ===== */}
-        {currentStep === "kanji" && (
+        {/* ===== BƯỚC 4: XEM KANJI ===== */}
+        {currentStep === "kanji" && currentWord && (
           <div className="bg-white rounded-3xl shadow-sm p-8 text-center">
             <div className="text-xs text-gray-400 uppercase tracking-wide mb-6">
-              Bước 3 — Ghi nhớ cách viết
+              Ghi nhớ cách viết Kanji
             </div>
 
-            {/* Chữ Kanji lớn */}
-            <div className="text-9xl font-bold text-gray-900 mb-4 py-8 border-2 border-dashed border-gray-200 rounded-2xl">
-              {currentWord.word}
+            {/* Mỗi chữ Hán 1 ô vuông */}
+            <div className="flex justify-center gap-4 mb-6 flex-wrap">
+              {currentWord.word
+                .split("")
+                .filter((char) => /[\u4e00-\u9faf]/.test(char))
+                .map((kanji, i) => (
+                  <div
+                    key={i}
+                    className="w-32 h-32 border-2 border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50"
+                  >
+                    <span className="text-6xl font-bold text-gray-900">
+                      {kanji}
+                    </span>
+                  </div>
+                ))}
             </div>
 
-            {/* Thông tin từ */}
-            <div className="bg-gray-50 rounded-2xl p-4 mb-6 text-left">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{currentWord.word}</span>
-                <span className="text-red-400">{currentWord.reading}</span>
-                <span className="text-xs bg-gray-200 px-2 py-1 rounded-lg text-gray-500">{currentWord.type}</span>
+            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-red-400 font-medium">{currentWord.reading}</span>
+                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-lg">
+                  {currentWord.type}
+                </span>
               </div>
               <div className="text-gray-700 font-medium">{currentWord.meaning}</div>
-              <div className="text-gray-400 text-sm mt-2">{currentWord.example}</div>
-              <div className="text-gray-400 text-xs">{currentWord.exampleMeaning}</div>
             </div>
 
             <button
@@ -380,28 +464,25 @@ export default function LearnPage() {
         {currentStep === "result" && (
           <div className="bg-white rounded-3xl shadow-sm p-12 text-center">
             <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Hoàn thành buổi học!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Hoàn thành buổi học!
+            </h2>
             <p className="text-gray-500 mb-8">
-              Bạn vừa học được <span className="font-bold text-red-600">{learnedCount} từ mới</span>
+              Bạn vừa học được{" "}
+              <span className="font-bold text-red-600">{learnedCount} từ mới</span>
             </p>
             <div className="flex flex-col gap-3">
-              <Link
-                href="/learn"
+              <Link href="/learn"
                 onClick={() => window.location.reload()}
-                className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition"
-              >
+                className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition">
                 🚀 Học tiếp 10 từ nữa
               </Link>
-              <Link
-                href="/flashcard"
-                className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition"
-              >
-                🃏 Ôn tập Flashcard
+              <Link href="/progress"
+                className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition">
+                📈 Xem tiến độ
               </Link>
-              <Link
-                href="/dashboard"
-                className="py-3 text-gray-400 hover:text-gray-600 transition"
-              >
+              <Link href="/dashboard"
+                className="py-3 text-gray-400 hover:text-gray-600 transition">
                 Về Dashboard
               </Link>
             </div>
