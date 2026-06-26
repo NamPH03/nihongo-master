@@ -6,6 +6,8 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getProgress, getSRStats, getDueWords, ProgressData } from "@/lib/progress";
+import NotificationSetup from "@/components/ui/NotificationSetup";
+import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
 
 export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState("");
@@ -28,8 +30,16 @@ export default function DashboardPage() {
       setSrStats(stats);
       setDueCount(due.length);
       setLoading(false);
+      if (typeof window !== "undefined" && canNotifyNow()) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      const studiedToday = (prog.dailyHistory?.[todayStr] || 0) > 0;
+      checkAndNotify(due.length, prog.streak, studiedToday);
+      setLastNotifyTime();
+    }
     });
+    
     return () => unsubscribe();
+    
   }, [router]);
 
   const handleLogout = async () => {
@@ -179,6 +189,8 @@ export default function DashboardPage() {
         </div>
 
       </div>
+      {/* Banner xin quyền thông báo */}
+      <NotificationSetup />
     </main>
   );
 }

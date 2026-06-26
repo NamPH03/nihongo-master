@@ -31,11 +31,6 @@ function hasKanji(text: string): boolean {
   return /[\u4e00-\u9faf]/.test(text);
 }
 
-// Kiểm tra từ có giống cách đọc không (katakana/hiragana thuần)
-function isSameAsReading(word: string, reading: string): boolean {
-  return word === reading;
-}
-
 // Tạo 4 đáp án (1 đúng + 3 sai)
 function generateChoices(
   correct: Vocabulary,
@@ -158,7 +153,7 @@ export default function LearnPage() {
     if (words.length > 0 && currentStep === "flashcard") {
       setTimeout(() => speakJapanese(words[0].word, false), 500);
     }
-  }, [words]); // Chỉ chạy khi words load xong
+  }, [words]);
   // Chuyển bước
   const nextStep = async () => {
     const next = getNextStep(currentStep, currentWord);
