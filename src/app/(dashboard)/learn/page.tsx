@@ -150,7 +150,7 @@ export default function LearnPage() {
   };
   // Tự phát âm từ đầu tiên khi load xong
   useEffect(() => {
-    if (words.length > 0 && currentStep === "flashcard") {
+    if (words.length > 0) {
       setTimeout(() => speakJapanese(words[0].word, false), 500);
     }
   }, [words]);

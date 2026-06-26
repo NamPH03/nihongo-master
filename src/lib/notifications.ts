@@ -17,7 +17,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 // Gửi thông báo
-export function sendNotification(title: string, body: string, icon = "🎌") {
+export function sendNotification(title: string, body: string) {
   if (Notification.permission !== "granted") return;
 
   new Notification(title, {
