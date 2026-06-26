@@ -1,5 +1,5 @@
 // src/lib/progress.ts
-import { db, auth } from "./firebase";
+import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, updateDoc,
   collection, getDocs, query, where

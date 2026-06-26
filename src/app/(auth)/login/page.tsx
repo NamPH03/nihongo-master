@@ -27,12 +27,13 @@ export default function LoginPage() {
       await signInWithEmailAndPassword(auth, email, password);
       // Đúng → vào dashboard
       router.push("/dashboard");
-    } catch (err: any) {
-      if (err.code === "auth/user-not-found") {
+    } catch (err: unknown) {
+      const error = err as { code?: string };
+      if (error.code === "auth/user-not-found") {
         setError("Email này chưa được đăng ký!");
-      } else if (err.code === "auth/wrong-password") {
+      } else if (error.code === "auth/wrong-password") {
         setError("Sai mật khẩu, thử lại nhé!");
-      } else if (err.code === "auth/invalid-credential") {
+      } else if (error.code === "auth/invalid-credential") {
         setError("Email hoặc mật khẩu không đúng!");
       } else {
         setError("Có lỗi xảy ra, thử lại nhé!");

@@ -42,12 +42,15 @@ export default function RegisterPage() {
       await createUserWithEmailAndPassword(auth, email, password);
       // Thành công → chuyển vào dashboard
       router.push("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { code?: string };
       // Xử lý các lỗi thường gặp
-      if (err.code === "auth/email-already-in-use") {
-        setError("Email này đã được đăng ký rồi!");
-      } else if (err.code === "auth/invalid-email") {
-        setError("Email không hợp lệ!");
+      if (error.code === "auth/user-not-found") {
+        setError("Email này chưa được đăng ký!");
+      } else if (error.code === "auth/wrong-password") {
+        setError("Sai mật khẩu, thử lại nhé!");
+      } else if (error.code === "auth/invalid-credential") {
+        setError("Email hoặc mật khẩu không đúng!");
       } else {
         setError("Có lỗi xảy ra, thử lại nhé!");
       }
