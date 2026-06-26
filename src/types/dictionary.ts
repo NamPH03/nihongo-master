@@ -21,6 +21,8 @@ export type DictionaryWord = {
   level: string;
   meanings: WordMeaning[];
   difficultyLevel: number; // 1-5
+  source?: "local" | "external";
+  language?: "vi-jp" | "en-jp";
 };
 
 // Từ user đã lưu vào kho cá nhân

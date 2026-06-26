@@ -1,7 +1,7 @@
 // src/app/(dashboard)/dictionary/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -15,15 +15,35 @@ type Tab = "search" | "saved";
 
 export default function DictionaryPage() {
   const [tab, setTab] = useState<Tab>("search");
+  const [dictionaryLanguage, setDictionaryLanguage] = useState<"vi" | "en">("vi");
+  const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
-  const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary();
+  const previousLanguage = useRef<"vi" | "en">("vi");
+  const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary(dictionaryLanguage);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) router.push("/login");
+      if (!user && process.env.NODE_ENV === "production") {
+        router.replace("/login");
+        return;
+      }
+
+      setAuthReady(true);
     });
+
     return () => unsubscribe();
   }, [router]);
+
+  useEffect(() => {
+    if (previousLanguage.current !== dictionaryLanguage) {
+      previousLanguage.current = dictionaryLanguage;
+      if (query.trim()) {
+        search(query);
+      } else {
+        clearSearch();
+      }
+    }
+  }, [dictionaryLanguage, query, search, clearSearch]);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -42,7 +62,24 @@ export default function DictionaryPage() {
       <div className="max-w-2xl mx-auto px-4 py-6">
 
         {/* Tiêu đề */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-5">📖 Từ điển</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">📖 Từ điển</h1>
+        <p className="text-sm text-gray-500 mb-4">
+          Tìm trong từ vựng của bạn trước; nếu không có, hệ thống sẽ tra từ bên ngoài qua API.
+        </p>
+
+        <div className="mb-5 bg-white rounded-2xl p-4 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Ngôn ngữ hiển thị nghĩa
+          </label>
+          <select
+            value={dictionaryLanguage}
+            onChange={(e) => setDictionaryLanguage(e.target.value as "vi" | "en")}
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            <option value="vi">Tiếng Việt</option>
+            <option value="en">Tiếng Anh</option>
+          </select>
+        </div>
 
         {/* Tab */}
         <div className="flex gap-2 mb-5">
@@ -69,6 +106,7 @@ export default function DictionaryPage() {
               onChange={search}
               onClear={clearSearch}
               loading={loading}
+              placeholder={dictionaryLanguage === "vi" ? "Nhập từ tiếng Nhật, tiếng Việt hoặc hiragana..." : "Nhập từ tiếng Nhật, tiếng Anh hoặc hiragana..."}
             />
 
             <div className="mt-4 space-y-4">
@@ -83,8 +121,8 @@ export default function DictionaryPage() {
               {!hasSearched && !loading && (
                 <div className="text-center py-12 text-gray-400">
                   <div className="text-5xl mb-3">🔍</div>
-                  <p>Nhập từ tiếng Nhật, hiragana hoặc nghĩa để tìm</p>
-                  <p className="text-sm mt-1">Ví dụ: 食べる, たべる, ăn</p>
+                  <p>Nhập từ tiếng Nhật, tiếng Việt hoặc tiếng Anh để tìm</p>
+                  <p className="text-sm mt-1">Ví dụ: 食べる, たべる, ăn, eat</p>
                 </div>
               )}
 

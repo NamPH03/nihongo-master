@@ -6,9 +6,10 @@ type Props = {
   onChange: (value: string) => void;
   onClear: () => void;
   loading: boolean;
+  placeholder?: string;
 };
 
-export default function SearchBar({ query, onChange, onClear, loading }: Props) {
+export default function SearchBar({ query, onChange, onClear, loading, placeholder }: Props) {
   return (
     <div className="relative">
       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl">
@@ -18,7 +19,7 @@ export default function SearchBar({ query, onChange, onClear, loading }: Props) 
         type="text"
         value={query}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Nhập từ tiếng Nhật, hiragana hoặc nghĩa..."
+        placeholder={placeholder || "Nhập từ tiếng Nhật, hiragana hoặc nghĩa..."}
         className="w-full pl-12 pr-12 py-4 bg-white border-2 border-gray-200 rounded-2xl text-lg focus:outline-none focus:border-red-400 transition"
       />
 

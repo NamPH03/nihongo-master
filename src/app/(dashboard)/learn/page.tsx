@@ -455,23 +455,23 @@ export default function LearnPage() {
                 .map((kanji, i) => (
                   <div
                     key={i}
-                    className="w-32 h-32 border-2 border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50"
+                    className="w-32 h-32 border-2 border-slate-400 rounded-2xl flex items-center justify-center bg-white shadow-md"
                   >
-                    <span className="text-6xl font-bold text-gray-900">
+                    <span className="text-6xl font-black text-slate-950 tracking-wide drop-shadow-sm">
                       {kanji}
                     </span>
                   </div>
                 ))}
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6">
+            <div className="bg-white border border-slate-300 rounded-2xl p-4 text-left mb-6 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-red-400 font-medium">{currentWord.reading}</span>
-                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-lg">
+                <span className="text-red-600 font-semibold">{currentWord.reading}</span>
+                <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg">
                   {currentWord.type}
                 </span>
               </div>
-              <div className="text-gray-700 font-medium">{currentWord.meaning}</div>
+              <div className="text-slate-900 font-semibold">{currentWord.meaning}</div>
             </div>
 
             <button

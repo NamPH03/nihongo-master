@@ -80,6 +80,17 @@ export default function WordDetail({ word }: Props) {
         </span>
       </div>
 
+      {word.source && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${word.source === "external" ? "bg-orange-100 text-orange-600" : "bg-blue-100 text-blue-600"}`}>
+            {word.source === "external" ? "🌐 Tra từ API bên ngoài" : "🗂️ Từ vựng nội bộ"}
+          </span>
+          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${word.language === "en-jp" ? "bg-amber-100 text-amber-700" : "bg-violet-100 text-violet-700"}`}>
+            {word.language === "en-jp" ? "EN → JP" : "VI → JP"}
+          </span>
+        </div>
+      )}
+
       {/* Nút phát âm */}
       <div className="flex gap-3 mb-5">
         <button
