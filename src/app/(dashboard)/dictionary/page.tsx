@@ -16,7 +16,6 @@ type Tab = "search" | "saved";
 export default function DictionaryPage() {
   const [tab, setTab] = useState<Tab>("search");
   const [dictionaryLanguage, setDictionaryLanguage] = useState<"vi" | "en">("vi");
-  const [authReady, setAuthReady] = useState(false);
   const router = useRouter();
   const previousLanguage = useRef<"vi" | "en">("vi");
   const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary(dictionaryLanguage);
@@ -25,10 +24,7 @@ export default function DictionaryPage() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user && process.env.NODE_ENV === "production") {
         router.replace("/login");
-        return;
       }
-
-      setAuthReady(true);
     });
 
     return () => unsubscribe();

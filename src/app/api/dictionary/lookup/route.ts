@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+type TranslateItem = {
+  [key: string]: unknown;
+  0?: string | null;
+};
+
+type TranslateResponse = Array<Array<TranslateItem>>;
+
+type DictionarySense = {
+  english_definitions?: string[];
+  parts_of_speech?: string[];
+  tags?: string[];
+  [key: string]: unknown;
+};
+
+type DictionaryEntry = {
+  senses?: DictionarySense[];
+  [key: string]: unknown;
+};
+
+type DictionaryResponse = {
+  data?: DictionaryEntry[];
+  [key: string]: unknown;
+};
+
 function containsVietnamese(text: string): boolean {
   return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/.test(text);
 }
@@ -19,10 +43,10 @@ async function translateText(text: string, sourceLang: string, targetLang: strin
 
     if (!res.ok) return text;
 
-    const data = await res.json();
+    const data = (await res.json()) as TranslateResponse;
     const translated = Array.isArray(data?.[0])
       ? data[0]
-          .map((item: any) => item?.[0])
+          .map((item) => (typeof item?.[0] === "string" ? item[0] : ""))
           .filter(Boolean)
           .join(" ; ")
       : "";
@@ -64,25 +88,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Lookup failed" }, { status: 502 });
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as DictionaryResponse;
     const entries = Array.isArray(data?.data) ? data.data : [];
 
     const transformed = await Promise.all(
-      entries.map(async (entry: any) => {
+      entries.map(async (entry) => {
         const originalSenses = Array.isArray(entry?.senses) ? entry.senses : [];
         const translatedSenses = await Promise.all(
-          originalSenses.map(async (sense: any) => {
+          originalSenses.map(async (sense) => {
             const englishDefinitions = Array.isArray(sense?.english_definitions)
-              ? sense.english_definitions
+              ? sense.english_definitions.filter((def): def is string => typeof def === "string")
               : [];
             const partsOfSpeech = Array.isArray(sense?.parts_of_speech)
-              ? sense.parts_of_speech
+              ? sense.parts_of_speech.filter((part): part is string => typeof part === "string")
               : [];
-            const tags = Array.isArray(sense?.tags) ? sense.tags : [];
+            const tags = Array.isArray(sense?.tags)
+              ? sense.tags.filter((tag): tag is string => typeof tag === "string")
+              : [];
 
             const translatedDefinitions = language === "en"
               ? englishDefinitions
-              : await Promise.all(englishDefinitions.slice(0, 2).map((def: string) => translateToVietnamese(def)));
+              : await Promise.all(englishDefinitions.slice(0, 2).map((def) => translateToVietnamese(def)));
 
             return {
               ...sense,
