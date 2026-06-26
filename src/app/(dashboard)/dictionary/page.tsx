@@ -92,7 +92,7 @@ export default function DictionaryPage() {
               {hasSearched && results.length === 0 && !loading && (
                 <div className="text-center py-12 text-gray-400">
                   <div className="text-5xl mb-3">😕</div>
-                  <p>Không tìm thấy từ <span className="font-bold">"{query}"</span></p>
+                  <p>Không tìm thấy từ <span className="font-bold">{`"${query}"`}</span></p>
                 </div>
               )}
 

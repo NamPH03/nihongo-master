@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { DictionaryWord } from "@/types/dictionary";
 
