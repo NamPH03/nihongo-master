@@ -165,6 +165,7 @@ export default function DashboardPage() {
             { icon: "📈", label: "Tiến độ", sub: "Xem chi tiết", href: "/progress", active: true, highlight: false },
             { icon: "✍️", label: "Trắc nghiệm", sub: "Sắp có", href: "#", active: false, highlight: false },
             { icon: "📱", label: "Mobile App", sub: "Sắp có", href: "#", active: false, highlight: false },
+            { icon: "📖", label: "Từ điển", sub: "Tra cứu từ vựng", href: "/dictionary", active: true, highlight: false },
           ].map((item) => (
             <Link
               key={item.label}
