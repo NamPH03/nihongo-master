@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { markNewWordLearned, updateProgress } from "@/lib/progress";
+import { getLearnedWordIds, markNewWordLearned, upsertUserWord } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
@@ -74,6 +74,11 @@ export default function LearnPage() {
   useEffect(() => {
     const fetchWords = async () => {
       try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const learnedWordIds = await getLearnedWordIds(user.uid);
+
         // 10 từ mới để học
         const newQ = query(
           collection(db, "vocabulary"),
@@ -81,9 +86,11 @@ export default function LearnPage() {
           limit(10)
         );
         const newSnap = await getDocs(newQ);
-        const newWords = newSnap.docs.map((d) => ({
-          id: d.id, ...d.data(),
-        })) as Vocabulary[];
+        const newWords = newSnap.docs
+          .filter((d) => !learnedWordIds.has(d.id))
+          .map((d) => ({
+            id: d.id, ...d.data(),
+          })) as Vocabulary[];
 
         // Lấy thêm từ để tạo đáp án sai
         const allQ = query(collection(db, "vocabulary"), limit(100));
@@ -129,9 +136,18 @@ export default function LearnPage() {
 
   // Chuyển sang từ tiếp theo hoặc kết thúc
   const goNextWord = async () => {
-    await markNewWordLearned(currentWord.id);
     const user = auth.currentUser;
-    if (user) await updateProgress(user.uid, 1);
+    if (user && currentWord) {
+      await upsertUserWord(user.uid, {
+        wordId: currentWord.id,
+        word: currentWord.word,
+        reading: currentWord.reading,
+        meaning: currentWord.meaning,
+        srLevel: 1,
+      });
+      await markNewWordLearned(user.uid, currentWord.id);
+    }
+
     setLearnedCount((p) => p + 1);
 
     if (currentIndex + 1 >= words.length) {
@@ -455,23 +471,23 @@ export default function LearnPage() {
                 .map((kanji, i) => (
                   <div
                     key={i}
-                    className="w-32 h-32 border-2 border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50"
+                    className="w-32 h-32 border-2 border-slate-400 rounded-2xl flex items-center justify-center bg-white shadow-md"
                   >
-                    <span className="text-6xl font-bold text-gray-900">
+                    <span className="text-6xl font-black text-slate-950 tracking-wide drop-shadow-sm">
                       {kanji}
                     </span>
                   </div>
                 ))}
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6">
+            <div className="bg-white border border-slate-300 rounded-2xl p-4 text-left mb-6 shadow-sm">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-red-400 font-medium">{currentWord.reading}</span>
-                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-lg">
+                <span className="text-red-600 font-semibold">{currentWord.reading}</span>
+                <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg">
                   {currentWord.type}
                 </span>
               </div>
-              <div className="text-gray-700 font-medium">{currentWord.meaning}</div>
+              <div className="text-slate-900 font-semibold">{currentWord.meaning}</div>
             </div>
 
             <button

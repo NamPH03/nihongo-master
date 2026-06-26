@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { promoteWord, demoteWord, updateProgress } from "@/lib/progress";
+import { promoteWord, demoteWord, updateProgress, getDueWords } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
 
+// Từ vựng nội dung (từ collection vocabulary)
 type Vocabulary = {
   id: string;
   word: string;
@@ -17,7 +18,11 @@ type Vocabulary = {
   type: string;
   meaning: string;
   level: string;
-  status: string;
+};
+
+// Từ để ôn tập (kết hợp nội dung + SR data)
+type ReviewWord = Vocabulary & {
+  wordId: string;
   srLevel: number;
   nextReview: string;
 };
@@ -26,25 +31,12 @@ type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "list
 
 const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
 
-function generateChoices(
-  correct: Vocabulary,
-  allWords: Vocabulary[],
-  type: "word" | "meaning"
-): string[] {
-  const others = allWords
-    .filter((w) => w.id !== correct.id)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
-  const choices =
-    type === "word"
-      ? [correct.word, ...others.map((w) => w.word)]
-      : [correct.meaning, ...others.map((w) => w.meaning)];
-  return choices.sort(() => Math.random() - 0.5);
-}
-
-function pickRandom(arr: ReviewStep[]): ReviewStep {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const stepLabel: Record<ReviewStep, string> = {
+  "meaning-to-word": "Nhìn nghĩa → Chọn từ",
+  "word-to-meaning": "Nhìn từ → Chọn nghĩa",
+  "type-reading": "Gõ cách đọc",
+  "listening": "Nghe → Chọn nghĩa",
+};
 
 const srLevelColor: Record<number, string> = {
   1: "bg-red-100 text-red-600",
@@ -54,15 +46,23 @@ const srLevelColor: Record<number, string> = {
   5: "bg-green-100 text-green-600",
 };
 
-const stepLabel: Record<ReviewStep, string> = {
-  "meaning-to-word": "Nhìn nghĩa → Chọn từ",
-  "word-to-meaning": "Nhìn từ → Chọn nghĩa",
-  "type-reading": "Gõ cách đọc",
-  "listening": "Nghe → Chọn nghĩa",
-};
+function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
+  const others = allWords
+    .filter((w) => w.id !== correct.id)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+  const choices = type === "word"
+    ? [correct.word, ...others.map((w) => w.word)]
+    : [correct.meaning, ...others.map((w) => w.meaning)];
+  return choices.sort(() => Math.random() - 0.5);
+}
+
+function pickRandom(arr: ReviewStep[]): ReviewStep {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 export default function ReviewPage() {
-  const [dueWords, setDueWords] = useState<Vocabulary[]>([]);
+  const [dueWords, setDueWords] = useState<ReviewWord[]>([]);
   const [allWords, setAllWords] = useState<Vocabulary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentStep, setCurrentStep] = useState<ReviewStep>("meaning-to-word");
@@ -87,19 +87,40 @@ export default function ReviewPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const now = new Date().toISOString();
-        const snap = await getDocs(
-          query(collection(db, "vocabulary"), where("status", "==", "learned"))
-        );
-        const due = snap.docs
-          .filter((d) => { const nr = d.data().nextReview; return !nr || nr <= now; })
-          .map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
+        const user = auth.currentUser;
+        if (!user) return;
 
+        // Lấy từ đến hạn ôn của USER từ subcollection progress
+        const dueProgress = await getDueWords(user.uid, 20);
+
+        // Lấy nội dung từng từ từ vocabulary collection
+        const reviewWords: ReviewWord[] = [];
+        for (const progress of dueProgress) {
+          const wordSnap = await getDoc(doc(db, "vocabulary", progress.id));
+          if (wordSnap.exists()) {
+            const data = wordSnap.data();
+            reviewWords.push({
+              id: wordSnap.id,
+              wordId: progress.id,
+              word: data.word || "",
+              reading: data.reading || "",
+              type: data.type || "",
+              meaning: data.meaning || "",
+              level: data.level || "N5",
+              srLevel: progress.srLevel || 1,
+              nextReview: progress.nextReview || "",
+            });
+          }
+        }
+
+        // Lấy thêm từ để tạo đáp án sai
         const allSnap = await getDocs(query(collection(db, "vocabulary")));
-        const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
+        const all = allSnap.docs.map((d) => ({
+          id: d.id, ...d.data(),
+        })) as Vocabulary[];
 
         setAllWords(all);
-        setDueWords(due.slice(0, 20));
+        setDueWords(reviewWords);
       } catch (err) {
         console.error(err);
       } finally {
@@ -109,8 +130,7 @@ export default function ReviewPage() {
     fetchData();
   }, []);
 
-  // Khởi tạo bước đầu cho từ
-  const initWord = useCallback((word: Vocabulary, usedSoFar: ReviewStep[]) => {
+  const initWord = useCallback((word: ReviewWord, usedSoFar: ReviewStep[]) => {
     const available = ALL_STEPS.filter((s) => !usedSoFar.includes(s));
     const picked = pickRandom(available);
     const remaining = available.filter((s) => s !== picked);
@@ -126,11 +146,13 @@ export default function ReviewPage() {
       setChoices(generateChoices(word, allWords, "word"));
     } else if (picked === "word-to-meaning") {
       setChoices(generateChoices(word, allWords, "meaning"));
+    } else if (picked === "listening") {
+      setChoices(generateChoices(word, allWords, "meaning"));
     }
+
     setTimeout(() => speakJapanese(word.word, false), 300);
   }, [allWords]);
 
-  // Khởi tạo từ đầu tiên khi có data
   useEffect(() => {
     if (dueWords.length > 0 && allWords.length > 0) {
       initWord(dueWords[0], []);
@@ -139,12 +161,10 @@ export default function ReviewPage() {
 
   const currentWord = dueWords[currentIndex];
 
-  // Xử lý kết quả đúng/sai
   const handleResult = async (remembered: boolean) => {
     if (!remembered) {
       setForgotThisWord(true);
       if (remainingSteps.length > 0) {
-        // Còn bước → ôn thêm
         const next = pickRandom(remainingSteps);
         const newRemaining = remainingSteps.filter((s) => s !== next);
         setCurrentStep(next);
@@ -156,26 +176,29 @@ export default function ReviewPage() {
           setChoices(generateChoices(currentWord, allWords, "word"));
         } else if (next === "word-to-meaning") {
           setChoices(generateChoices(currentWord, allWords, "meaning"));
+        } else if (next === "listening") {
+          setChoices(generateChoices(currentWord, allWords, "meaning"));
         }
+        setTimeout(() => speakJapanese(currentWord.word, false), 300);
       } else {
-        // Hết bước → kết thúc, giảm mức
         await finishWord(false);
       }
     } else {
-      // Nhớ → kết thúc
-      // Nếu đã quên lần nào → không tăng mức
       await finishWord(!forgotThisWord);
     }
   };
 
   const finishWord = async (promote: boolean) => {
-    if (promote) {
-      await promoteWord(currentWord.id, currentWord.srLevel || 1);
-    } else {
-      await demoteWord(currentWord.id, currentWord.srLevel || 1);
-    }
     const user = auth.currentUser;
-    if (user) await updateProgress(user.uid, 0);
+    if (!user) return;
+
+    if (promote) {
+      await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+    } else {
+      await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+    }
+
+    await updateProgress(user.uid, 0);
     setDoneCount((p) => p + 1);
 
     if (currentIndex + 1 >= dueWords.length) {
@@ -187,19 +210,17 @@ export default function ReviewPage() {
     }
   };
 
-  // Style nút trắc nghiệm
   const choiceStyle = (choice: string) => {
-    // Xác định đáp án đúng theo từng bước
     let correct = "";
     if (currentStep === "meaning-to-word") correct = currentWord.word;
     else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
     else if (currentStep === "listening") correct = currentWord.meaning;
 
     if (answerStatus === "idle") {
-      return "border-2 border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50";
+      return "border-2 border-gray-200 bg-white text-gray-800 hover:border-red-300 hover:bg-red-50";
     }
-    if (choice === correct) return "border-2 border-green-400 bg-green-50 text-green-700 font-bold";
-    if (choice === selectedAnswer) return "border-2 border-red-400 bg-red-50 text-red-600";
+    if (choice === correct) return "border-2 border-green-500 bg-green-500 text-white font-bold";
+    if (choice === selectedAnswer) return "border-2 border-red-500 bg-red-500 text-white font-bold";
     return "border-2 border-gray-100 bg-white text-gray-300";
   };
 
@@ -212,17 +233,28 @@ export default function ReviewPage() {
     else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
     else if (currentStep === "listening") correct = currentWord.meaning;
 
-    const isCorrect = choice === correct;
-    setAnswerStatus(isCorrect ? "correct" : "wrong");
-    // Không tự chuyển nữa — người dùng tự bấm Tiếp tục
+    setAnswerStatus(choice === correct ? "correct" : "wrong");
   };
 
   const checkTyped = () => {
     const correct = currentWord.reading.trim();
-    const answer = typedAnswer.trim();
-    const isCorrect = answer === correct;
+    const isCorrect = typedAnswer.trim() === correct;
     setAnswerStatus(isCorrect ? "correct" : "wrong");
   };
+
+  // Nút tiếp tục sau khi trả lời
+  const ContinueButton = () => (
+    <button
+      onClick={() => handleResult(answerStatus === "correct")}
+      className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+        answerStatus === "correct"
+          ? "bg-green-500 hover:bg-green-600"
+          : "bg-red-500 hover:bg-red-600"
+      }`}
+    >
+      {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
+    </button>
+  );
 
   // ===== LOADING =====
   if (loading) return (
@@ -290,7 +322,7 @@ export default function ReviewPage() {
 
       <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Tiến độ + tên bước */}
+        {/* Tiến độ */}
         <div className="mb-5">
           <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2">
             <div
@@ -329,19 +361,7 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-              {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
-              {answerStatus !== "idle" && (
-                <button
-                  onClick={() => handleResult(answerStatus === "correct")}
-                  className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-                    answerStatus === "correct"
-                      ? "bg-green-500 hover:bg-green-600"
-                      : "bg-red-500 hover:bg-red-600"
-                  }`}
-                >
-                  {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-                </button>
-              )}
+            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
@@ -368,22 +388,11 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-            {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
-            {answerStatus !== "idle" && (
-              <button
-                onClick={() => handleResult(answerStatus === "correct")}
-                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-                  answerStatus === "correct"
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-red-500 hover:bg-red-600"
-                }`}
-              >
-                {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-              </button>
-            )}
+            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
-        {/* ===== BƯỚC 3: NGHE → CHỌN NGHĨA ===== */}
+
+        {/* ===== NGHE → CHỌN NGHĨA ===== */}
         {currentStep === "listening" && currentWord && (
           <div className="bg-white rounded-3xl shadow-sm p-6">
             <div className="text-center mb-6">
@@ -391,22 +400,17 @@ export default function ReviewPage() {
                 Nghe và chọn nghĩa đúng
               </div>
               <div className="flex justify-center gap-4">
-                <SpeakButton text={currentWord?.word} size="lg" />
-                <SpeakButton text={currentWord?.word} slow size="lg" />
+                <SpeakButton text={currentWord.word} size="lg" />
+                <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
-              {/* Hiện từ nhỏ bên dưới nút nghe */}
               <div className="text-gray-400 text-sm mt-3">
                 {currentWord.word} · {currentWord.reading}
               </div>
             </div>
-
             <div className="flex flex-col gap-3">
               {choices.map((choice, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
-                >
+                <button key={i} onClick={() => handleChoice(choice)}
+                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}>
                   <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
                     {i + 1}
                   </span>
@@ -414,22 +418,10 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-              {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
-              {answerStatus !== "idle" && (
-                <button
-                  onClick={() => handleResult(answerStatus === "correct")}
-                  className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-                    answerStatus === "correct"
-                      ? "bg-green-500 hover:bg-green-600"
-                      : "bg-red-500 hover:bg-red-600"
-                  }`}
-                >
-                  {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-                </button>
-              )}
-            
+            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
+
         {/* ===== GÕ CÁCH ĐỌC ===== */}
         {currentStep === "type-reading" && currentWord && (
           <div className="bg-white rounded-3xl shadow-sm p-6">
@@ -457,7 +449,6 @@ export default function ReviewPage() {
               }`}
             />
 
-            {/* Kết quả */}
             {answerStatus === "wrong" && (
               <div className="text-center text-red-500 mb-4 text-sm">
                 ❌ Chưa đúng — Đáp án: <span className="font-bold text-lg">{currentWord.reading}</span>
@@ -478,14 +469,7 @@ export default function ReviewPage() {
                 Kiểm tra
               </button>
             )}
-            {answerStatus !== "idle" && (
-              <button
-                onClick={() => handleResult(answerStatus === "correct")}
-                className="w-full py-4 bg-green-500 text-white font-semibold rounded-2xl hover:bg-green-600 transition"
-              >
-                Tiếp tục →
-              </button>
-            )}
+            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 

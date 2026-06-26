@@ -5,7 +5,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getProgress, getSRStats, getDueWords, ProgressData } from "@/lib/progress";
+import { getProgress, getSRStats, getDueWords, getUserWordStatuses, ProgressData, UserWordStatus } from "@/lib/progress";
 import NotificationSetup from "@/components/ui/NotificationSetup";
 import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
 
@@ -14,32 +14,41 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [srStats, setSrStats] = useState<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [dueCount, setDueCount] = useState(0);
+  const [userWords, setUserWords] = useState<UserWordStatus[]>([]);
+  const [activeTab, setActiveTab] = useState<"overview" | "memory">("overview");
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push("/login"); return; }
+
       setUserEmail(user.email || "");
-      const [prog, stats, due] = await Promise.all([
+
+      // ✅ Truyền user.uid vào tất cả hàm
+      const [prog, stats, due, words] = await Promise.all([
         getProgress(user.uid),
-        getSRStats(),
-        getDueWords(),
+        getSRStats(user.uid),
+        getDueWords(user.uid),
+        getUserWordStatuses(user.uid),
       ]);
+
       setProgress(prog);
       setSrStats(stats);
       setDueCount(due.length);
+      setUserWords(words);
       setLoading(false);
+
+      // Kiểm tra thông báo
       if (typeof window !== "undefined" && canNotifyNow()) {
-      const todayStr = new Date().toISOString().split("T")[0];
-      const studiedToday = (prog.dailyHistory?.[todayStr] || 0) > 0;
-      checkAndNotify(due.length, prog.streak, studiedToday);
-      setLastNotifyTime();
-    }
+        const todayStr = new Date().toISOString().split("T")[0];
+        const studiedToday = (prog.dailyHistory?.[todayStr] || 0) > 0;
+        checkAndNotify(due.length, prog.streak, studiedToday);
+        setLastNotifyTime();
+      }
     });
-    
+
     return () => unsubscribe();
-    
   }, [router]);
 
   const handleLogout = async () => {
@@ -49,6 +58,10 @@ export default function DashboardPage() {
 
   const totalLearned = Object.values(srStats).reduce((a, b) => a + b, 0);
   const maxSR = Math.max(...Object.values(srStats), 1);
+  const groupedWords = [1, 2, 3, 4, 5].map((level) => ({
+    level,
+    words: userWords.filter((w) => w.srLevel === level),
+  }));
 
   const srColors: Record<number, string> = {
     1: "bg-red-400",
@@ -83,8 +96,10 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-gray-500 text-sm">👤 {userEmail}</span>
-          <button onClick={handleLogout}
-            className="px-4 py-2 text-red-600 border border-red-600 rounded-lg hover:bg-red-50 transition text-sm">
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-red-600 border border-red-600 rounded-lg hover:bg-red-50 transition text-sm"
+          >
             Đăng xuất
           </button>
         </div>
@@ -92,8 +107,22 @@ export default function DashboardPage() {
 
       <div className="max-w-3xl mx-auto px-6 py-8">
 
-        {/* ===== STATS HÀNG ĐẦU ===== */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="flex gap-2 mb-6">
+          {(["overview", "memory"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${activeTab === tab ? "bg-red-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+            >
+              {tab === "overview" ? "Tổng quan" : "Kho từ theo mức nhớ"}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "overview" ? (
+          <>
+            {/* ===== STATS ===== */}
+            <div className="grid grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
             <div className="text-3xl mb-1">🔥</div>
             <div className="text-2xl font-bold text-orange-500">{progress?.streak || 0}</div>
@@ -118,7 +147,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ===== BIỂU ĐỒ 5 MỨC SR ===== */}
+        {/* ===== BIỂU ĐỒ SR ===== */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="font-bold text-gray-700 mb-1">📊 Phân bố từ vựng theo mức ghi nhớ</h2>
           <p className="text-xs text-gray-400 mb-5">Spaced Repetition — càng lên cao càng nhớ lâu</p>
@@ -129,18 +158,15 @@ export default function DashboardPage() {
               const height = maxSR > 0 ? (count / maxSR) * 100 : 0;
               return (
                 <div key={level} className="flex flex-col items-center gap-2 flex-1">
-                  {/* Số từ */}
                   <span className="text-xs font-bold text-gray-600">
                     {count > 0 ? count : ""}
                   </span>
-                  {/* Cột */}
                   <div className="w-full flex items-end" style={{ height: "100px" }}>
                     <div
                       className={`w-full rounded-t-xl transition-all ${srColors[level]} ${count === 0 ? "opacity-20" : ""}`}
                       style={{ height: count === 0 ? "4px" : `${Math.max(height, 8)}%` }}
                     />
                   </div>
-                  {/* Label */}
                   <div className="text-center">
                     <div className="text-sm font-bold text-gray-700">Mức {level}</div>
                     <div className="text-xs text-gray-400">{srLabels[level]}</div>
@@ -156,16 +182,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ===== CÁC TÍNH NĂNG ===== */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {/* ===== TÍNH NĂNG ===== */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
             { icon: "🎯", label: "Học từ mới", sub: "10 từ mỗi buổi", href: "/learn", active: true, highlight: false },
             { icon: "🔁", label: "Ôn tập", sub: dueCount > 0 ? `${dueCount} từ cần ôn` : "Chưa có từ cần ôn", href: "/review", active: dueCount > 0, highlight: dueCount > 0 },
             { icon: "📚", label: "Từ vựng", sub: "968 từ N5", href: "/vocabulary", active: true, highlight: false },
+            { icon: "📖", label: "Từ điển", sub: "Tra cứu từ vựng", href: "/dictionary", active: true, highlight: false },
             { icon: "📈", label: "Tiến độ", sub: "Xem chi tiết", href: "/progress", active: true, highlight: false },
             { icon: "✍️", label: "Trắc nghiệm", sub: "Sắp có", href: "#", active: false, highlight: false },
-            { icon: "📱", label: "Mobile App", sub: "Sắp có", href: "#", active: false, highlight: false },
-            { icon: "📖", label: "Từ điển", sub: "Tra cứu từ vựng", href: "/dictionary", active: true, highlight: false },
           ].map((item) => (
             <Link
               key={item.label}
@@ -187,10 +212,53 @@ export default function DashboardPage() {
               </div>
             </Link>
           ))}
-        </div>
+            </div>
+          </>
+        ) : (
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-bold text-gray-700">🗂️ Kho từ theo mức nhớ</h2>
+                <p className="text-xs text-gray-400">Tất cả từ đã lưu từ từ điển hoặc đã học từ Learn sẽ xuất hiện ở đây theo mức nhớ 1–5</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {groupedWords.map(({ level, words }) => (
+                <div key={level} className="rounded-2xl border border-gray-100 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="font-semibold text-gray-700">Mức {level}</div>
+                      <div className="text-xs text-gray-400">{srLabels[level]}</div>
+                    </div>
+                    <span className="text-sm font-bold text-gray-600">{words.length} từ</span>
+                  </div>
+
+                  {words.length === 0 ? (
+                    <div className="text-sm text-gray-400 py-2">Chưa có từ nào ở mức này</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {words.map((word) => (
+                        <div key={word.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                          <div>
+                            <div className="font-medium text-gray-700">{word.word}</div>
+                            <div className="text-xs text-gray-400">{word.reading} • {word.meaning}</div>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded-full ${word.status === "mastered" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                            {word.status === "mastered" ? "Đã thuộc" : "Đang học"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
       </div>
-      {/* Banner xin quyền thông báo */}
+
       <NotificationSetup />
     </main>
   );
