@@ -20,6 +20,7 @@ type JishoEntry = {
   japanese?: Array<{ word?: string; reading?: string }>;
   senses?: Array<{
     english_definitions?: string[];
+    translated_definitions?: string[];
     parts_of_speech?: string[];
     tags?: string[];
   }>;
