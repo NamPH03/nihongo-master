@@ -6,6 +6,7 @@ import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SpeakButton from "@/components/ui/SpeakButton";
 
 type Vocabulary = {
   id: string;
@@ -185,20 +186,8 @@ export default function FlashcardPage() {
                 >
                   {/* Nút âm thanh */}
                   <div className="flex gap-3 p-5">
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition text-xl"
-                      title="Phát âm bình thường"
-                    >
-                      🔊
-                    </button>
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition text-xl"
-                      title="Phát âm chậm"
-                    >
-                      🐢
-                    </button>
+                    <SpeakButton text={currentWord?.word} size="md" />
+                    <SpeakButton text={currentWord?.word} slow size="md" />
                   </div>
 
                   {/* Câu ví dụ */}

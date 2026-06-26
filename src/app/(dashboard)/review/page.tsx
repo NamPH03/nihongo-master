@@ -7,6 +7,8 @@ import { onAuthStateChanged } from "firebase/auth";
 import { promoteWord, demoteWord, updateProgress } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SpeakButton from "@/components/ui/SpeakButton";
+import { speakJapanese } from "@/lib/speech";
 
 type Vocabulary = {
   id: string;
@@ -20,9 +22,9 @@ type Vocabulary = {
   nextReview: string;
 };
 
-type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading";
+type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening";
 
-const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading"];
+const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
 
 function generateChoices(
   correct: Vocabulary,
@@ -56,6 +58,7 @@ const stepLabel: Record<ReviewStep, string> = {
   "meaning-to-word": "Nhìn nghĩa → Chọn từ",
   "word-to-meaning": "Nhìn từ → Chọn nghĩa",
   "type-reading": "Gõ cách đọc",
+  "listening": "Nghe → Chọn nghĩa",
 };
 
 export default function ReviewPage() {
@@ -124,6 +127,7 @@ export default function ReviewPage() {
     } else if (picked === "word-to-meaning") {
       setChoices(generateChoices(word, allWords, "meaning"));
     }
+    setTimeout(() => speakJapanese(word.word, false), 300);
   }, [allWords]);
 
   // Khởi tạo từ đầu tiên khi có data
@@ -185,7 +189,12 @@ export default function ReviewPage() {
 
   // Style nút trắc nghiệm
   const choiceStyle = (choice: string) => {
-    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
+    // Xác định đáp án đúng theo từng bước
+    let correct = "";
+    if (currentStep === "meaning-to-word") correct = currentWord.word;
+    else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
+    else if (currentStep === "listening") correct = currentWord.meaning;
+
     if (answerStatus === "idle") {
       return "border-2 border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50";
     }
@@ -197,10 +206,15 @@ export default function ReviewPage() {
   const handleChoice = (choice: string) => {
     if (answerStatus !== "idle") return;
     setSelectedAnswer(choice);
-    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
+
+    let correct = "";
+    if (currentStep === "meaning-to-word") correct = currentWord.word;
+    else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
+    else if (currentStep === "listening") correct = currentWord.meaning;
+
     const isCorrect = choice === correct;
     setAnswerStatus(isCorrect ? "correct" : "wrong");
-    if (!isCorrect) handleResult(false);
+    // Không tự chuyển nữa — người dùng tự bấm Tiếp tục
   };
 
   const checkTyped = () => {
@@ -208,7 +222,6 @@ export default function ReviewPage() {
     const answer = typedAnswer.trim();
     const isCorrect = answer === correct;
     setAnswerStatus(isCorrect ? "correct" : "wrong");
-    if (!isCorrect) handleResult(false);
   };
 
   // ===== LOADING =====
@@ -316,12 +329,19 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-            {answerStatus === "correct" && (
-              <button onClick={() => handleResult(true)}
-                className="w-full mt-5 py-4 bg-green-500 text-white font-semibold rounded-2xl hover:bg-green-600 transition">
-                ✅ Tiếp tục
-              </button>
-            )}
+              {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
+              {answerStatus !== "idle" && (
+                <button
+                  onClick={() => handleResult(answerStatus === "correct")}
+                  className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+                    answerStatus === "correct"
+                      ? "bg-green-500 hover:bg-green-600"
+                      : "bg-red-500 hover:bg-red-600"
+                  }`}
+                >
+                  {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
+                </button>
+              )}
           </div>
         )}
 
@@ -348,15 +368,68 @@ export default function ReviewPage() {
                 </button>
               ))}
             </div>
-            {answerStatus === "correct" && (
-              <button onClick={() => handleResult(true)}
-                className="w-full mt-5 py-4 bg-green-500 text-white font-semibold rounded-2xl hover:bg-green-600 transition">
-                ✅ Tiếp tục
+            {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
+            {answerStatus !== "idle" && (
+              <button
+                onClick={() => handleResult(answerStatus === "correct")}
+                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+                  answerStatus === "correct"
+                    ? "bg-green-500 hover:bg-green-600"
+                    : "bg-red-500 hover:bg-red-600"
+                }`}
+              >
+                {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
               </button>
             )}
           </div>
         )}
+        {/* ===== BƯỚC 3: NGHE → CHỌN NGHĨA ===== */}
+        {currentStep === "listening" && currentWord && (
+          <div className="bg-white rounded-3xl shadow-sm p-6">
+            <div className="text-center mb-6">
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
+                Nghe và chọn nghĩa đúng
+              </div>
+              <div className="flex justify-center gap-4">
+                <SpeakButton text={currentWord?.word} size="lg" />
+                <SpeakButton text={currentWord?.word} slow size="lg" />
+              </div>
+              {/* Hiện từ nhỏ bên dưới nút nghe */}
+              <div className="text-gray-400 text-sm mt-3">
+                {currentWord.word} · {currentWord.reading}
+              </div>
+            </div>
 
+            <div className="flex flex-col gap-3">
+              {choices.map((choice, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleChoice(choice)}
+                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
+                >
+                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <span>{choice}</span>
+                </button>
+              ))}
+            </div>
+              {/* Thêm vào sau mỗi phần choices — thay thế đoạn chỉ có "correct" */}
+              {answerStatus !== "idle" && (
+                <button
+                  onClick={() => handleResult(answerStatus === "correct")}
+                  className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+                    answerStatus === "correct"
+                      ? "bg-green-500 hover:bg-green-600"
+                      : "bg-red-500 hover:bg-red-600"
+                  }`}
+                >
+                  {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
+                </button>
+              )}
+            
+          </div>
+        )}
         {/* ===== GÕ CÁCH ĐỌC ===== */}
         {currentStep === "type-reading" && currentWord && (
           <div className="bg-white rounded-3xl shadow-sm p-6">

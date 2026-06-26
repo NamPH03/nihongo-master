@@ -9,6 +9,8 @@ import { onAuthStateChanged } from "firebase/auth";
 import { markNewWordLearned, updateProgress } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import SpeakButton from "@/components/ui/SpeakButton";
+import { speakJapanese } from "@/lib/speech";
 
 type Vocabulary = {
   id: string;
@@ -132,24 +134,31 @@ export default function LearnPage() {
 
   // Chuyển sang từ tiếp theo hoặc kết thúc
   const goNextWord = async () => {
-  // Dùng SR thay vì chỉ đánh dấu "learned"
-  await markNewWordLearned(currentWord.id);
-  const user = auth.currentUser;
-  if (user) await updateProgress(user.uid, 1);
-  setLearnedCount((p) => p + 1);
+    await markNewWordLearned(currentWord.id);
+    const user = auth.currentUser;
+    if (user) await updateProgress(user.uid, 1);
+    setLearnedCount((p) => p + 1);
 
-  if (currentIndex + 1 >= words.length) {
-    setCurrentStep("result");
-  } else {
-    const nextIdx = currentIndex + 1;
-    setCurrentIndex(nextIdx);
-    setCurrentStep("flashcard");
-    setIsFlipped(false);
-    setSelectedAnswer(null);
-    setAnswerStatus("idle");
-  }
-};
+    if (currentIndex + 1 >= words.length) {
+      setCurrentStep("result");
+    } else {
+      const nextIdx = currentIndex + 1;
+      setCurrentIndex(nextIdx);
+      setCurrentStep("flashcard");
+      setIsFlipped(false);
+      setSelectedAnswer(null);
+      setAnswerStatus("idle");
 
+      // Tự phát âm từ mới
+      setTimeout(() => speakJapanese(words[nextIdx].word, false), 300);
+    }
+  };
+  // Tự phát âm từ đầu tiên khi load xong
+  useEffect(() => {
+    if (words.length > 0 && currentStep === "flashcard") {
+      setTimeout(() => speakJapanese(words[0].word, false), 500);
+    }
+  }, [words]); // Chỉ chạy khi words load xong
   // Chuyển bước
   const nextStep = async () => {
     const next = getNextStep(currentStep, currentWord);
@@ -159,6 +168,9 @@ export default function LearnPage() {
       setCurrentStep(next);
       prepareChoices(next, currentWord);
       setIsFlipped(false);
+    }
+    if (next === "listening") {
+      setTimeout(() => speakJapanese(currentWord.word, false), 300);
     }
   };
 
@@ -285,45 +297,66 @@ export default function LearnPage() {
                 transformStyle: "preserve-3d",
                 transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                 position: "relative",
-                height: "300px",
+                height: "320px",
               }}>
 
-                {/* Mặt trước */}
-                <div className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col items-center justify-center px-8 text-center"
-                  style={{ backfaceVisibility: "hidden" }}>
-                  <div className="text-xs text-gray-300 mb-6 uppercase tracking-wide">
-                    Bấm để xem nghĩa
+                {/* ===== MẶT TRƯỚC ===== */}
+                <div
+                  className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
+                  style={{ backfaceVisibility: "hidden" }}
+                >
+                  {/* Nút âm thanh góc trên trái */}
+                  <div className="flex gap-2 p-4">
+                    <SpeakButton text={currentWord.word} size="sm" />
+                    <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
 
-                  {/* Cách đọc — chỉ hiện nếu khác với từ */}
-                  {!isSameAsReading(currentWord.word, currentWord.reading) && (
-                    <div className="text-lg text-red-400 mb-2">
-                      {currentWord.reading}
+                  {/* Nội dung giữa */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+                    <div className="text-xs text-gray-300 mb-4 uppercase tracking-wide">
+                      Bấm để xem nghĩa
                     </div>
-                  )}
-
-                  {/* Từ tiếng Nhật */}
-                  <div className="text-6xl font-bold text-gray-900">
-                    {currentWord.word}
+                    {currentWord.word !== currentWord.reading && (
+                      <div className="text-lg text-red-400 mb-2">
+                        {currentWord.reading}
+                      </div>
+                    )}
+                    <div className="text-6xl font-bold text-gray-900">
+                      {currentWord.word}
+                    </div>
                   </div>
                 </div>
 
-                {/* Mặt sau */}
-                <div className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col items-center justify-center px-8 text-center"
-                  style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}>
-                  <div className="text-4xl font-bold text-gray-900 mb-3">
-                    {currentWord.meaning}
+                {/* ===== MẶT SAU ===== */}
+                <div
+                  className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
+                  style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
+                >
+                  {/* Nút âm thanh góc trên trái */}
+                  <div className="flex gap-2 p-4">
+                    <SpeakButton text={currentWord.word} size="sm" />
+                    <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
-                  <div className="text-sm text-gray-400 bg-gray-100 px-3 py-1 rounded-lg">
-                    {currentWord.type}
+
+                  {/* Nội dung giữa */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+                    <div className="text-4xl font-bold text-gray-900 mb-3">
+                      {currentWord.meaning}
+                    </div>
+                    <div className="text-sm text-gray-400 bg-gray-100 px-3 py-1 rounded-lg">
+                      {currentWord.type}
+                    </div>
                   </div>
                 </div>
+
               </div>
             </div>
 
             {isFlipped ? (
-              <button onClick={nextStep}
-                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
+              <button
+                onClick={nextStep}
+                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition"
+              >
                 Tiếp tục →
               </button>
             ) : (
@@ -379,12 +412,8 @@ export default function LearnPage() {
                 Nghe và chọn nghĩa đúng
               </div>
               <div className="flex justify-center gap-4">
-                <button className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl hover:bg-gray-200 transition">
-                  🔊
-                </button>
-                <button className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl hover:bg-gray-200 transition">
-                  🐢
-                </button>
+                <SpeakButton text={currentWord?.word} size="lg" />
+                <SpeakButton text={currentWord?.word} slow size="lg" />
               </div>
               {/* Hiện từ nhỏ bên dưới nút nghe */}
               <div className="text-gray-400 text-sm mt-3">
