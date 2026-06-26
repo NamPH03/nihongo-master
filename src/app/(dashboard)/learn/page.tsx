@@ -6,7 +6,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { markNewWordLearned, updateProgress } from "@/lib/progress";
+import { getLearnedWordIds, markNewWordLearned, upsertUserWord } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
@@ -74,6 +74,11 @@ export default function LearnPage() {
   useEffect(() => {
     const fetchWords = async () => {
       try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const learnedWordIds = await getLearnedWordIds(user.uid);
+
         // 10 từ mới để học
         const newQ = query(
           collection(db, "vocabulary"),
@@ -81,9 +86,11 @@ export default function LearnPage() {
           limit(10)
         );
         const newSnap = await getDocs(newQ);
-        const newWords = newSnap.docs.map((d) => ({
-          id: d.id, ...d.data(),
-        })) as Vocabulary[];
+        const newWords = newSnap.docs
+          .filter((d) => !learnedWordIds.has(d.id))
+          .map((d) => ({
+            id: d.id, ...d.data(),
+          })) as Vocabulary[];
 
         // Lấy thêm từ để tạo đáp án sai
         const allQ = query(collection(db, "vocabulary"), limit(100));
@@ -129,9 +136,18 @@ export default function LearnPage() {
 
   // Chuyển sang từ tiếp theo hoặc kết thúc
   const goNextWord = async () => {
-    await markNewWordLearned(currentWord.id);
     const user = auth.currentUser;
-    if (user) await updateProgress(user.uid, 1);
+    if (user && currentWord) {
+      await upsertUserWord(user.uid, {
+        wordId: currentWord.id,
+        word: currentWord.word,
+        reading: currentWord.reading,
+        meaning: currentWord.meaning,
+        srLevel: 1,
+      });
+      await markNewWordLearned(user.uid, currentWord.id);
+    }
+
     setLearnedCount((p) => p + 1);
 
     if (currentIndex + 1 >= words.length) {

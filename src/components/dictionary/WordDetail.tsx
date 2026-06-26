@@ -2,9 +2,9 @@
 "use client";
 
 import { useState } from "react";
-import { db, auth } from "@/lib/firebase";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { auth } from "@/lib/firebase";
 import { speakJapanese } from "@/lib/speech";
+import { markNewWordLearned, upsertUserWord } from "@/lib/progress";
 import type { DictionaryWord } from "@/types/dictionary";
 
 type Props = {
@@ -29,32 +29,14 @@ export default function WordDetail({ word }: Props) {
 
     setSaving(true);
     try {
-      // Kiểm tra đã lưu chưa
-      const existing = await getDocs(
-        query(
-          collection(db, "userWords"),
-          where("userId", "==", user.uid),
-          where("wordId", "==", word.id)
-        )
-      );
-
-      if (!existing.empty) {
-        setSaved(true);
-        return;
-      }
-
-      // Lưu vào Firebase
-      await addDoc(collection(db, "userWords"), {
-        userId: user.uid,
+      await upsertUserWord(user.uid, {
         wordId: word.id,
         word: word.word,
         reading: word.reading,
         meaning: word.meanings[0]?.definitions[0]?.meaning || "",
-        status: "learning",
-        notes: "",
-        createdAt: new Date().toISOString(),
-        reviewCount: 0,
+        srLevel: 1,
       });
+      await markNewWordLearned(user.uid, word.id);
 
       setSaved(true);
     } catch (err) {
