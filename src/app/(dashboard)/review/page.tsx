@@ -9,28 +9,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
+import Navbar from "@/components/ui/Navbar";
 
-// Từ vựng nội dung (từ collection vocabulary)
 type Vocabulary = {
-  id: string;
-  word: string;
-  reading: string;
-  type: string;
-  meaning: string;
-  level: string;
+  id: string; word: string; reading: string; type: string; meaning: string; level: string;
 };
-
-// Từ để ôn tập (kết hợp nội dung + SR data)
-type ReviewWord = Vocabulary & {
-  wordId: string;
-  srLevel: number;
-  nextReview: string;
-};
-
+type ReviewWord = Vocabulary & { wordId: string; srLevel: number; nextReview: string; };
 type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening";
 
 const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
-
 const stepLabel: Record<ReviewStep, string> = {
   "meaning-to-word": "Nhìn nghĩa → Chọn từ",
   "word-to-meaning": "Nhìn từ → Chọn nghĩa",
@@ -38,19 +25,16 @@ const stepLabel: Record<ReviewStep, string> = {
   "listening": "Nghe → Chọn nghĩa",
 };
 
-const srLevelColor: Record<number, string> = {
-  1: "bg-red-100 text-red-600",
-  2: "bg-orange-100 text-orange-600",
-  3: "bg-yellow-100 text-yellow-600",
-  4: "bg-blue-100 text-blue-600",
-  5: "bg-green-100 text-green-600",
+const srColors: Record<number, { bg: string; text: string }> = {
+  1: { bg: "rgba(239,68,68,0.12)",   text: "#ef4444" },
+  2: { bg: "rgba(249,115,22,0.12)",  text: "#f97316" },
+  3: { bg: "rgba(234,179,8,0.12)",   text: "#eab308" },
+  4: { bg: "rgba(59,130,246,0.12)",  text: "#3b82f6" },
+  5: { bg: "rgba(34,197,94,0.12)",   text: "#22c55e" },
 };
 
 function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
-  const others = allWords
-    .filter((w) => w.id !== correct.id)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
+  const others = allWords.filter((w) => w.id !== correct.id).sort(() => Math.random() - 0.5).slice(0, 3);
   const choices = type === "word"
     ? [correct.word, ...others.map((w) => w.word)]
     : [correct.meaning, ...others.map((w) => w.meaning)];
@@ -89,43 +73,27 @@ export default function ReviewPage() {
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        // Lấy từ đến hạn ôn của USER từ subcollection progress
         const dueProgress = await getDueWords(user.uid, 20);
-
-        // Lấy nội dung từng từ từ vocabulary collection
         const reviewWords: ReviewWord[] = [];
         for (const progress of dueProgress) {
           const wordSnap = await getDoc(doc(db, "vocabulary", progress.id));
           if (wordSnap.exists()) {
             const data = wordSnap.data();
             reviewWords.push({
-              id: wordSnap.id,
-              wordId: progress.id,
-              word: data.word || "",
-              reading: data.reading || "",
-              type: data.type || "",
-              meaning: data.meaning || "",
-              level: data.level || "N5",
-              srLevel: progress.srLevel || 1,
+              id: wordSnap.id, wordId: progress.id,
+              word: data.word || "", reading: data.reading || "",
+              type: data.type || "", meaning: data.meaning || "",
+              level: data.level || "N5", srLevel: progress.srLevel || 1,
               nextReview: progress.nextReview || "",
             });
           }
         }
-
-        // Lấy thêm từ để tạo đáp án sai
         const allSnap = await getDocs(query(collection(db, "vocabulary")));
-        const all = allSnap.docs.map((d) => ({
-          id: d.id, ...d.data(),
-        })) as Vocabulary[];
-
+        const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
         setAllWords(all);
         setDueWords(reviewWords);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     };
     fetchData();
   }, []);
@@ -134,29 +102,20 @@ export default function ReviewPage() {
     const available = ALL_STEPS.filter((s) => !usedSoFar.includes(s));
     const picked = pickRandom(available);
     const remaining = available.filter((s) => s !== picked);
-
     setCurrentStep(picked);
     setRemainingSteps(remaining);
     setSelectedAnswer(null);
     setAnswerStatus("idle");
     setTypedAnswer("");
     setForgotThisWord(false);
-
-    if (picked === "meaning-to-word") {
-      setChoices(generateChoices(word, allWords, "word"));
-    } else if (picked === "word-to-meaning") {
-      setChoices(generateChoices(word, allWords, "meaning"));
-    } else if (picked === "listening") {
-      setChoices(generateChoices(word, allWords, "meaning"));
-    }
-
+    if (picked === "meaning-to-word") setChoices(generateChoices(word, allWords, "word"));
+    else if (picked === "word-to-meaning") setChoices(generateChoices(word, allWords, "meaning"));
+    else if (picked === "listening") setChoices(generateChoices(word, allWords, "meaning"));
     setTimeout(() => speakJapanese(word.word, false), 300);
   }, [allWords]);
 
   useEffect(() => {
-    if (dueWords.length > 0 && allWords.length > 0) {
-      initWord(dueWords[0], []);
-    }
+    if (dueWords.length > 0 && allWords.length > 0) initWord(dueWords[0], []);
   }, [dueWords, allWords, initWord]);
 
   const currentWord = dueWords[currentIndex];
@@ -172,128 +131,134 @@ export default function ReviewPage() {
         setSelectedAnswer(null);
         setAnswerStatus("idle");
         setTypedAnswer("");
-        if (next === "meaning-to-word") {
-          setChoices(generateChoices(currentWord, allWords, "word"));
-        } else if (next === "word-to-meaning") {
-          setChoices(generateChoices(currentWord, allWords, "meaning"));
-        } else if (next === "listening") {
-          setChoices(generateChoices(currentWord, allWords, "meaning"));
-        }
+        if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
+        else if (next === "word-to-meaning") setChoices(generateChoices(currentWord, allWords, "meaning"));
+        else if (next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
         setTimeout(() => speakJapanese(currentWord.word, false), 300);
-      } else {
-        await finishWord(false);
-      }
-    } else {
-      await finishWord(!forgotThisWord);
-    }
+      } else { await finishWord(false); }
+    } else { await finishWord(!forgotThisWord); }
   };
 
   const finishWord = async (promote: boolean) => {
     const user = auth.currentUser;
     if (!user) return;
-
-    if (promote) {
-      await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
-    } else {
-      await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
-    }
-
+    if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+    else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
     await updateProgress(user.uid, 0);
     setDoneCount((p) => p + 1);
-
-    if (currentIndex + 1 >= dueWords.length) {
-      setFinished(true);
-    } else {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
-      initWord(dueWords[nextIdx], []);
-    }
+    if (currentIndex + 1 >= dueWords.length) { setFinished(true); }
+    else { const nextIdx = currentIndex + 1; setCurrentIndex(nextIdx); initWord(dueWords[nextIdx], []); }
   };
 
-  const choiceStyle = (choice: string) => {
+  const getChoiceStyle = (choice: string): React.CSSProperties => {
     let correct = "";
     if (currentStep === "meaning-to-word") correct = currentWord.word;
-    else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
-    else if (currentStep === "listening") correct = currentWord.meaning;
-
-    if (answerStatus === "idle") {
-      return "border-2 border-gray-200 bg-white text-gray-800 hover:border-red-300 hover:bg-red-50";
-    }
-    if (choice === correct) return "border-2 border-green-500 bg-green-500 text-white font-bold";
-    if (choice === selectedAnswer) return "border-2 border-red-500 bg-red-500 text-white font-bold";
-    return "border-2 border-gray-100 bg-white text-gray-300";
+    else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
+    if (answerStatus === "idle") return {};
+    if (choice === correct) return { background: "var(--primary)", color: "#0d1f14", borderColor: "var(--primary)" };
+    if (choice === selectedAnswer) return { background: "#ef4444", color: "#fff", borderColor: "#ef4444" };
+    return { opacity: 0.35 };
   };
 
   const handleChoice = (choice: string) => {
     if (answerStatus !== "idle") return;
     setSelectedAnswer(choice);
-
     let correct = "";
     if (currentStep === "meaning-to-word") correct = currentWord.word;
-    else if (currentStep === "word-to-meaning") correct = currentWord.meaning;
-    else if (currentStep === "listening") correct = currentWord.meaning;
-
+    else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
     setAnswerStatus(choice === correct ? "correct" : "wrong");
   };
 
   const checkTyped = () => {
     const correct = currentWord.reading.trim();
-    const isCorrect = typedAnswer.trim() === correct;
-    setAnswerStatus(isCorrect ? "correct" : "wrong");
+    setAnswerStatus(typedAnswer.trim() === correct ? "correct" : "wrong");
   };
 
-  // Nút tiếp tục sau khi trả lời
+  const progressPct = dueWords.length > 0 ? (doneCount / dueWords.length) * 100 : 0;
+  const srInfo = currentWord ? srColors[currentWord.srLevel || 1] : srColors[1];
+
   const ContinueButton = () => (
     <button
       onClick={() => handleResult(answerStatus === "correct")}
-      className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-        answerStatus === "correct"
-          ? "bg-green-500 hover:bg-green-600"
-          : "bg-red-500 hover:bg-red-600"
-      }`}
+      className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
+      style={answerStatus === "correct"
+        ? { background: "var(--primary)", color: "#0d1f14" }
+        : { background: "#ef4444", color: "#fff" }
+      }
     >
       {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
     </button>
   );
 
-  // ===== LOADING =====
-  if (loading) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-4xl">⏳</div>
+  const ChoiceList = () => (
+    <div className="flex flex-col gap-3">
+      {choices.map((choice, i) => (
+        <button
+          key={i}
+          onClick={() => handleChoice(choice)}
+          className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
+          style={{
+            background: "var(--surface-2)",
+            border: "2px solid var(--border-color)",
+            color: "var(--text)",
+            ...getChoiceStyle(choice),
+          }}
+        >
+          <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
+            style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
+            {i + 1}
+          </span>
+          <span className={currentStep === "meaning-to-word" ? "font-jp text-lg" : ""}>{choice}</span>
+        </button>
+      ))}
     </div>
   );
 
-  // ===== KHÔNG CÓ TỪ CẦN ÔN =====
+  // ===== LOADING =====
+  if (loading) return (
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải từ cần ôn...</p>
+      </div>
+    </div>
+  );
+
+  // ===== KHÔNG CÓ TỪ =====
   if (!loading && dueWords.length === 0) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center px-4">
+      <div className="card p-12 text-center max-w-md animate-scale-in">
         <div className="text-6xl mb-4">✅</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Không có gì cần ôn!</h2>
-        <p className="text-gray-500 mb-6">Bạn đã ôn hết rồi — quay lại sau nhé!</p>
-        <Link href="/dashboard"
-          className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition">
-          Về Dashboard
-        </Link>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
+          Không có gì cần ôn!
+        </h2>
+        <p className="mb-6" style={{ color: "var(--text-muted)" }}>
+          Bạn đã ôn hết rồi — quay lại sau nhé.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Link href="/learn" className="btn btn-primary py-3 rounded-xl">🎯 Học từ mới</Link>
+          <Link href="/dashboard" className="btn btn-ghost py-3 rounded-xl">Về Dashboard</Link>
+        </div>
       </div>
     </div>
   );
 
   // ===== XONG =====
   if (finished) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center px-4">
+      <div className="card p-12 text-center max-w-md animate-scale-in">
         <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Ôn tập xong!</h2>
-        <p className="text-gray-500 mb-8">
-          Đã ôn <span className="font-bold text-red-600">{doneCount} từ</span>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>Ôn tập xong!</h2>
+        <p className="mb-8" style={{ color: "var(--text-muted)" }}>
+          Đã ôn{" "}
+          <span className="font-bold" style={{ color: "var(--primary)" }}>{doneCount} từ</span>
         </p>
         <div className="flex flex-col gap-3">
-          <Link href="/learn"
-            className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition">
-            🎯 Học từ mới
-          </Link>
-          <Link href="/dashboard"
-            className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition">
+          <Link href="/learn" className="btn btn-primary py-3 rounded-xl">🎯 Học từ mới</Link>
+          <Link href="/progress" className="btn btn-ghost py-3 rounded-xl">📈 Xem tiến độ</Link>
+          <Link href="/dashboard" className="py-3 text-sm text-center"
+            style={{ color: "var(--text-muted)" }}>
             Về Dashboard
           </Link>
         </div>
@@ -302,135 +267,113 @@ export default function ReviewPage() {
   );
 
   return (
-    <main className="min-h-screen bg-gray-100">
-
-      {/* Menu */}
-      <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="text-2xl">🎌</span>
-          <span className="text-xl font-bold text-red-600">Nihongo Master</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          {currentWord && (
-            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${srLevelColor[currentWord.srLevel || 1]}`}>
-              Mức {currentWord.srLevel || 1}
-            </span>
-          )}
-          <span className="text-gray-400 text-sm">{currentIndex + 1} / {dueWords.length}</span>
-        </div>
-      </nav>
+    <div className="min-h-[100dvh] bg-page">
+      <Navbar userEmail="" showBackToDashboard />
 
       <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Tiến độ */}
-        <div className="mb-5">
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2">
-            <div
-              className="bg-red-500 h-1.5 rounded-full transition-all"
-              style={{ width: `${(doneCount / dueWords.length) * 100}%` }}
-            />
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-gray-400">{stepLabel[currentStep]}</span>
-            {forgotThisWord && (
-              <span className="text-xs text-orange-500">
-                ⚠️ Ôn thêm {remainingSteps.length} bước
+        {/* Header row */}
+        <div className="flex justify-between items-center mb-4 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+              Ôn tập
+            </span>
+            {currentWord && (
+              <span className="badge" style={{ background: srInfo.bg, color: srInfo.text }}>
+                Mức {currentWord.srLevel || 1}
               </span>
             )}
           </div>
+          <div className="flex items-center gap-3">
+            {forgotThisWord && (
+              <span className="text-xs" style={{ color: "#f97316" }}>
+                ⚠️ Ôn thêm {remainingSteps.length} bước
+              </span>
+            )}
+            <span className="text-xs font-medium tabular" style={{ color: "var(--text-muted)" }}>
+              {currentIndex + 1} / {dueWords.length}
+            </span>
+          </div>
         </div>
 
-        {/* ===== NHÌN NGHĨA → CHỌN TỪ ===== */}
+        {/* Progress bar */}
+        <div className="mb-4">
+          <div className="w-full h-1.5 rounded-full" style={{ background: "var(--surface-2)" }}>
+            <div
+              className="h-1.5 rounded-full transition-all duration-700 ease-spring"
+              style={{ width: `${progressPct}%`, background: "var(--primary)" }}
+            />
+          </div>
+          <p className="text-xs mt-1.5" style={{ color: "var(--text-faint)" }}>
+            {stepLabel[currentStep]}
+          </p>
+        </div>
+
+        {/* ===== MEANING → WORD ===== */}
         {currentStep === "meaning-to-word" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+              <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
                 Chọn từ tiếng Nhật đúng
-              </div>
-              <div className="text-3xl font-bold text-gray-900">{currentWord.meaning}</div>
-              <div className="text-sm text-gray-400 mt-1">[{currentWord.type}]</div>
+              </p>
+              <div className="text-3xl font-bold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
+              <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>[{currentWord.type}]</div>
             </div>
-            <div className="flex flex-col gap-3">
-              {choices.map((choice, i) => (
-                <button key={i} onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}>
-                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <span className="text-lg">{choice}</span>
-                </button>
-              ))}
-            </div>
+            <ChoiceList />
             {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
-        {/* ===== NHÌN TỪ → CHỌN NGHĨA ===== */}
+        {/* ===== WORD → MEANING ===== */}
         {currentStep === "word-to-meaning" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+              <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
                 Chọn nghĩa đúng của từ
-              </div>
+              </p>
               {currentWord.word !== currentWord.reading && (
-                <div className="text-base text-red-400 mb-1">{currentWord.reading}</div>
+                <div className="text-base mb-1 font-jp" style={{ color: "var(--primary)" }}>
+                  {currentWord.reading}
+                </div>
               )}
-              <div className="text-5xl font-bold text-gray-900">{currentWord.word}</div>
+              <div className="font-jp text-5xl font-bold" style={{ color: "var(--text)" }}>
+                {currentWord.word}
+              </div>
             </div>
-            <div className="flex flex-col gap-3">
-              {choices.map((choice, i) => (
-                <button key={i} onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}>
-                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <span>{choice}</span>
-                </button>
-              ))}
-            </div>
+            <ChoiceList />
             {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
-        {/* ===== NGHE → CHỌN NGHĨA ===== */}
+        {/* ===== LISTENING ===== */}
         {currentStep === "listening" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
+              <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-faint)" }}>
                 Nghe và chọn nghĩa đúng
-              </div>
-              <div className="flex justify-center gap-4">
+              </p>
+              <div className="flex justify-center gap-4 mb-3">
                 <SpeakButton text={currentWord.word} size="lg" />
                 <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
-              <div className="text-gray-400 text-sm mt-3">
+              <div className="text-sm font-jp" style={{ color: "var(--text-muted)" }}>
                 {currentWord.word} · {currentWord.reading}
               </div>
             </div>
-            <div className="flex flex-col gap-3">
-              {choices.map((choice, i) => (
-                <button key={i} onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}>
-                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <span>{choice}</span>
-                </button>
-              ))}
-            </div>
+            <ChoiceList />
             {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
-        {/* ===== GÕ CÁCH ĐỌC ===== */}
+        {/* ===== TYPE READING ===== */}
         {currentStep === "type-reading" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+              <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
                 Gõ cách đọc bằng hiragana
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mb-1">{currentWord.meaning}</div>
-              <div className="text-sm text-gray-400">[{currentWord.type}]</div>
+              </p>
+              <div className="text-3xl font-bold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
+              <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>[{currentWord.type}]</div>
             </div>
 
             <input
@@ -440,40 +383,45 @@ export default function ReviewPage() {
               onKeyDown={(e) => { if (e.key === "Enter" && typedAnswer.trim()) checkTyped(); }}
               placeholder="Ví dụ: たべる"
               disabled={answerStatus !== "idle"}
-              className={`w-full px-4 py-4 border-2 rounded-2xl text-center text-xl focus:outline-none transition mb-4 ${
-                answerStatus === "correct"
-                  ? "border-green-400 bg-green-50 text-green-700"
-                  : answerStatus === "wrong"
-                  ? "border-red-400 bg-red-50 text-red-600"
-                  : "border-gray-200 focus:border-red-400"
-              }`}
+              className="input text-center text-xl font-jp mb-4"
+              style={{
+                borderWidth: "2px",
+                borderColor: answerStatus === "correct"
+                  ? "var(--primary)" : answerStatus === "wrong"
+                  ? "#ef4444" : "var(--border-color)",
+                background: answerStatus === "correct"
+                  ? "rgba(34,197,94,0.08)" : answerStatus === "wrong"
+                  ? "rgba(239,68,68,0.06)" : "var(--surface)",
+              }}
             />
 
             {answerStatus === "wrong" && (
-              <div className="text-center text-red-500 mb-4 text-sm">
-                ❌ Chưa đúng — Đáp án: <span className="font-bold text-lg">{currentWord.reading}</span>
+              <div className="text-center text-sm mb-4" style={{ color: "#ef4444" }}>
+                Đáp án đúng:{" "}
+                <span className="font-bold text-lg font-jp" style={{ color: "var(--text)" }}>
+                  {currentWord.reading}
+                </span>
               </div>
             )}
             {answerStatus === "correct" && (
-              <div className="text-center text-green-600 mb-4 text-sm font-semibold">
+              <div className="text-center text-sm font-semibold mb-4" style={{ color: "var(--primary)" }}>
                 ✅ Chính xác!
               </div>
             )}
 
-            {answerStatus === "idle" && (
+            {answerStatus === "idle" ? (
               <button
                 onClick={checkTyped}
                 disabled={!typedAnswer.trim()}
-                className="w-full py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition disabled:opacity-40"
+                className="btn btn-primary w-full py-4 rounded-2xl"
               >
                 Kiểm tra
               </button>
-            )}
-            {answerStatus !== "idle" && <ContinueButton />}
+            ) : <ContinueButton />}
           </div>
         )}
 
       </div>
-    </main>
+    </div>
   );
 }

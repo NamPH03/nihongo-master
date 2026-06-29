@@ -7,6 +7,12 @@ import { collection, query, where, getDocs, doc, updateDoc } from "firebase/fire
 import { speakJapanese } from "@/lib/speech";
 import type { UserWord } from "@/types/dictionary";
 
+const filterLabels = {
+  all:      (n: number) => `Tất cả (${n})`,
+  learning: (n: number) => `Đang học (${n})`,
+  mastered: (n: number) => `Đã thuộc (${n})`,
+};
+
 export default function VocabularyList() {
   const [words, setWords] = useState<UserWord[]>([]);
   const [filter, setFilter] = useState<"all" | "learning" | "mastered">("all");
@@ -16,105 +22,97 @@ export default function VocabularyList() {
     const fetchWords = async () => {
       const user = auth.currentUser;
       if (!user) return;
-
       try {
-        const snap = await getDocs(
-          query(
-            collection(db, "userWords"),
-            where("userId", "==", user.uid)
-          )
-        );
-        const data = snap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        })) as UserWord[];
-        setWords(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+        const snap = await getDocs(query(collection(db, "userWords"), where("userId", "==", user.uid)));
+        setWords(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as UserWord[]);
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     };
     fetchWords();
   }, []);
 
   const toggleStatus = async (wordId: string, current: "learning" | "mastered") => {
-    const newStatus = current === "learning" ? "mastered" : "learning";
-    await updateDoc(doc(db, "userWords", wordId), { status: newStatus });
-    setWords((prev) =>
-      prev.map((w) => w.id === wordId ? { ...w, status: newStatus } : w)
-    );
+    const next = current === "learning" ? "mastered" : "learning";
+    await updateDoc(doc(db, "userWords", wordId), { status: next });
+    setWords((prev) => prev.map((w) => w.id === wordId ? { ...w, status: next } : w));
   };
 
-  const filtered = words.filter((w) =>
-    filter === "all" ? true : w.status === filter
-  );
+  const filtered = words.filter((w) => filter === "all" || w.status === filter);
 
   if (loading) return (
-    <div className="text-center py-8 text-gray-400">⏳ Đang tải...</div>
+    <div className="flex justify-center py-10">
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+        style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
+    </div>
   );
 
   return (
-    <div>
-      {/* Bộ lọc */}
-      <div className="flex gap-2 mb-4">
-        {(["all", "learning", "mastered"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-              filter === f
-                ? "bg-red-600 text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            {f === "all" ? `Tất cả (${words.length})`
-              : f === "learning" ? `Đang học (${words.filter(w => w.status === "learning").length})`
-              : `Đã thuộc (${words.filter(w => w.status === "mastered").length})`}
-          </button>
-        ))}
+    <div className="animate-fade-up">
+      {/* Filter pills */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {(["all", "learning", "mastered"] as const).map((f) => {
+          const count = f === "all" ? words.length
+            : words.filter((w) => w.status === f).length;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-spring"
+              style={
+                filter === f
+                  ? { background: "var(--primary)", color: "#0d1f14" }
+                  : { background: "var(--surface-2)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }
+              }
+            >
+              {filterLabels[f](count)}
+            </button>
+          );
+        })}
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <div className="text-4xl mb-3">📭</div>
-          <p>Chưa có từ nào</p>
+        <div className="text-center py-16">
+          <div className="text-5xl mb-3">📭</div>
+          <p style={{ color: "var(--text-muted)" }}>Chưa có từ nào</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((word) => (
-            <div key={word.id}
-              className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4">
-
-              {/* Từ */}
-              <div className="flex-1">
+        <div className="space-y-2">
+          {filtered.map((word, i) => (
+            <div
+              key={word.id}
+              className="card px-4 py-3 flex items-center gap-4 animate-fade-up"
+              style={{ animationDelay: `${Math.min(i, 20) * 30}ms` }}
+            >
+              {/* Word info */}
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-xl font-bold text-gray-900">{word.word}</span>
-                  <span className="text-red-400 text-sm">{word.reading}</span>
+                  <span className="font-jp font-bold" style={{ color: "var(--text)" }}>{word.word}</span>
+                  <span className="text-sm font-jp" style={{ color: "var(--primary)" }}>{word.reading}</span>
                 </div>
-                <div className="text-gray-500 text-sm">{word.meaning}</div>
+                <div className="text-sm truncate" style={{ color: "var(--text-muted)" }}>{word.meaning}</div>
               </div>
 
-              {/* Nút nghe */}
+              {/* Speak */}
               <button
                 onClick={() => speakJapanese(word.word, false)}
-                className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 flex-shrink-0"
+                style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
               >
                 🔊
               </button>
 
-              {/* Toggle status */}
+              {/* Status toggle */}
               <button
                 onClick={() => toggleStatus(word.id, word.status)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                className="badge flex-shrink-0 transition-all duration-200"
+                style={
                   word.status === "mastered"
-                    ? "bg-green-100 text-green-600 hover:bg-green-200"
-                    : "bg-orange-100 text-orange-600 hover:bg-orange-200"
-                }`}
+                    ? { background: "rgba(34,197,94,0.1)", color: "#22c55e" }
+                    : { background: "rgba(249,115,22,0.1)", color: "#f97316" }
+                }
               >
                 {word.status === "mastered" ? "✅ Đã thuộc" : "📖 Đang học"}
               </button>
-
             </div>
           ))}
         </div>

@@ -3,24 +3,19 @@
 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
-import {
-  collection, addDoc, getDocs, query,
-  where
-} from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { speakJapanese } from "@/lib/speech";
 import type { DictionaryWord } from "@/types/dictionary";
 import { saveWordToSchedule } from "@/lib/progress";
 
-type Props = {
-  word: DictionaryWord;
-};
+type Props = { word: DictionaryWord };
 
-const levelColors: Record<string, string> = {
-  N5: "bg-green-100 text-green-700",
-  N4: "bg-blue-100 text-blue-700",
-  N3: "bg-yellow-100 text-yellow-700",
-  N2: "bg-orange-100 text-orange-700",
-  N1: "bg-red-100 text-red-700",
+const levelStyle: Record<string, { bg: string; color: string }> = {
+  N5: { bg: "rgba(34,197,94,0.1)",   color: "#22c55e" },
+  N4: { bg: "rgba(59,130,246,0.1)",  color: "#3b82f6" },
+  N3: { bg: "rgba(234,179,8,0.1)",   color: "#eab308" },
+  N2: { bg: "rgba(249,115,22,0.1)",  color: "#f97316" },
+  N1: { bg: "rgba(239,68,68,0.1)",   color: "#ef4444" },
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "already_learning";
@@ -28,34 +23,19 @@ type SaveStatus = "idle" | "saving" | "saved" | "already_learning";
 export default function WordDetail({ word }: Props) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
-  // Kiểm tra từ đã được lưu/học chưa khi component load
   useEffect(() => {
     const checkSaved = async () => {
       const user = auth.currentUser;
       if (!user) return;
-
-      // Tìm trong vocabulary collection theo word + reading
       const vocabSnap = await getDocs(
-        query(
-          collection(db, "vocabulary"),
-          where("word", "==", word.word),
-          where("reading", "==", word.reading)
-        )
+        query(collection(db, "vocabulary"), where("word", "==", word.word), where("reading", "==", word.reading))
       );
-
       if (!vocabSnap.empty) {
         const wordId = vocabSnap.docs[0].id;
-        // Kiểm tra user đã có trong userProgress chưa
-        const progressSnap = await getDocs(
-          collection(db, "userProgress", user.uid, "words")
-        );
-        const alreadyLearning = progressSnap.docs.some(
-          (d) => d.id === wordId
-        );
-        if (alreadyLearning) setSaveStatus("already_learning");
+        const progressSnap = await getDocs(collection(db, "userProgress", user.uid, "words"));
+        if (progressSnap.docs.some((d) => d.id === wordId)) setSaveStatus("already_learning");
       }
     };
-
     checkSaved();
   }, [word]);
 
@@ -63,128 +43,89 @@ export default function WordDetail({ word }: Props) {
     const user = auth.currentUser;
     if (!user) return;
     setSaveStatus("saving");
-
     try {
-      // BƯỚC 1: Kiểm tra từ có trong vocabulary chưa
       const vocabSnap = await getDocs(
-        query(
-          collection(db, "vocabulary"),
-          where("word", "==", word.word),
-          where("reading", "==", word.reading)
-        )
+        query(collection(db, "vocabulary"), where("word", "==", word.word), where("reading", "==", word.reading))
       );
-
       let wordId: string;
-
       if (!vocabSnap.empty) {
-        // Từ đã có trong database → lấy ID
         wordId = vocabSnap.docs[0].id;
       } else {
-        // Từ chưa có → thêm vào vocabulary collection
         const meaning = word.meanings[0]?.definitions[0]?.meaning || "";
         const type = word.meanings[0]?.partOfSpeech || "N";
         const example = word.meanings[0]?.definitions[0]?.example || "";
         const exampleMeaning = word.meanings[0]?.definitions[0]?.exampleMeaning || "";
-
         const newDocRef = await addDoc(collection(db, "vocabulary"), {
-          word: word.word,
-          reading: word.reading,
-          meaning,
-          type,
-          level: word.level || "N5",
-          example,
-          exampleMeaning,
-          status: "new",
-          createdAt: new Date().toISOString(),
-          source: "dictionary", // Đánh dấu từ này đến từ từ điển
+          word: word.word, reading: word.reading, meaning, type,
+          level: word.level || "N5", example, exampleMeaning,
+          status: "new", createdAt: new Date().toISOString(), source: "dictionary",
         });
-
         wordId = newDocRef.id;
       }
-
-      // BƯỚC 2: Tạo userProgress cho từ này → vào luồng SR
       await saveWordToSchedule(user.uid, wordId);
-
       setSaveStatus("saved");
-
     } catch (err) {
       console.error("Lỗi lưu từ:", err);
       setSaveStatus("idle");
     }
   };
 
-  const buttonConfig = {
-    idle: {
-      text: "📌 Lưu vào kho từ & lịch học",
-      className: "bg-red-600 text-white hover:bg-red-700",
-    },
-    saving: {
-      text: "Đang lưu...",
-      className: "bg-gray-200 text-gray-500 cursor-wait",
-    },
-    saved: {
-      text: "✅ Đã thêm vào lịch học!",
-      className: "bg-green-100 text-green-600 cursor-default",
-    },
-    already_learning: {
-      text: "📚 Đang trong lịch học rồi",
-      className: "bg-blue-100 text-blue-600 cursor-default",
-    },
-  };
-
-  const btn = buttonConfig[saveStatus];
+  const lvl = levelStyle[word.level || ""] || { bg: "var(--surface-2)", color: "var(--text-muted)" };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-6">
+    <div className="card p-6 rounded-2xl animate-fade-up">
 
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>
-          <div className="text-5xl font-bold text-gray-900 mb-1">
+          <div className="font-jp text-5xl font-bold mb-1" style={{ color: "var(--text)" }}>
             {word.word}
           </div>
-          <div className="text-lg text-red-400">{word.reading}</div>
+          <div className="text-lg font-jp" style={{ color: "var(--primary)" }}>{word.reading}</div>
         </div>
         {word.level && (
-          <span className={`text-sm font-bold px-3 py-1 rounded-xl ${levelColors[word.level] || "bg-gray-100 text-gray-600"}`}>
+          <span className="badge" style={{ background: lvl.bg, color: lvl.color }}>
             {word.level}
           </span>
         )}
       </div>
 
-      {/* Nút phát âm */}
+      {/* Speak buttons */}
       <div className="flex gap-3 mb-5">
         <button
           onClick={() => speakJapanese(word.word, false)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
         >
           🔊 Phát âm
         </button>
         <button
           onClick={() => speakJapanese(word.word, true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150"
+          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
         >
           🐢 Chậm
         </button>
       </div>
 
-      {/* Nghĩa theo loại từ */}
+      {/* Meanings */}
       <div className="space-y-4 mb-5">
         {word.meanings.map((meaning, i) => (
           <div key={i}>
-            <div className="inline-block bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-lg mb-2">
+            <div className="inline-block badge mb-2"
+              style={{ background: "var(--primary-glow)", color: "var(--primary)" }}>
               {meaning.partOfSpeech}
             </div>
             {meaning.definitions.map((def, j) => (
               <div key={j} className="ml-2">
-                <div className="text-gray-800 font-medium mb-1">
+                <div className="font-medium mb-1" style={{ color: "var(--text)" }}>
                   {j + 1}. {def.meaning}
                 </div>
                 {def.example && (
-                  <div className="bg-gray-50 rounded-xl p-3 mt-1">
-                    <div className="text-gray-600 text-sm">{def.example}</div>
+                  <div className="rounded-xl p-3 mt-1" style={{ background: "var(--surface-2)" }}>
+                    <div className="text-sm font-jp" style={{ color: "var(--text-muted)" }}>{def.example}</div>
                     {def.exampleMeaning && (
-                      <div className="text-gray-400 text-xs mt-1">
+                      <div className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
                         {def.exampleMeaning}
                       </div>
                     )}
@@ -196,27 +137,32 @@ export default function WordDetail({ word }: Props) {
         ))}
       </div>
 
-      {/* Nút lưu */}
+      {/* Save button */}
       <button
         onClick={handleSave}
-        disabled={saveStatus === "saving" || saveStatus === "saved" || saveStatus === "already_learning"}
-        className={`w-full py-3 font-semibold rounded-2xl transition ${btn.className}`}
+        disabled={saveStatus !== "idle"}
+        className="btn w-full py-3 rounded-2xl"
+        style={
+          saveStatus === "idle"
+            ? { background: "var(--primary)", color: "#0d1f14" }
+            : saveStatus === "saving"
+            ? { background: "var(--surface-2)", color: "var(--text-muted)", cursor: "wait" }
+            : saveStatus === "saved"
+            ? { background: "rgba(34,197,94,0.12)", color: "#22c55e" }
+            : { background: "rgba(59,130,246,0.1)", color: "#3b82f6" }
+        }
       >
-        {btn.text}
+        {saveStatus === "idle" && "📌 Lưu vào kho từ & lịch học"}
+        {saveStatus === "saving" && "Đang lưu..."}
+        {saveStatus === "saved" && "✅ Đã thêm vào lịch học"}
+        {saveStatus === "already_learning" && "📚 Đang trong lịch học rồi"}
       </button>
 
-      {/* Giải thích */}
       {saveStatus === "saved" && (
-        <p className="text-center text-xs text-gray-400 mt-2">
-          Từ này sẽ xuất hiện trong &quot;Học từ mới&quot; của bạn!
+        <p className="text-center text-xs mt-2" style={{ color: "var(--text-faint)" }}>
+          Từ này sẽ xuất hiện trong &quot;Học từ mới&quot; của bạn
         </p>
       )}
-      {saveStatus === "already_learning" && (
-        <p className="text-center text-xs text-gray-400 mt-2">
-          Từ này đã có trong lịch học của bạn rồi.
-        </p>
-      )}
-
     </div>
   );
 }

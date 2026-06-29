@@ -12,7 +12,7 @@ type Props = {
 export default function SearchBar({ query, onChange, onClear, loading, placeholder }: Props) {
   return (
     <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-lg" style={{ color: "var(--text-faint)" }}>
         🔍
       </div>
       <input
@@ -20,21 +20,24 @@ export default function SearchBar({ query, onChange, onClear, loading, placehold
         value={query}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || "Nhập từ tiếng Nhật, hiragana hoặc nghĩa..."}
-        className="w-full pl-12 pr-12 py-4 bg-white border-2 border-gray-200 rounded-2xl text-gray-900 text-lg focus:outline-none focus:border-red-400 transition"
+        className="input pl-11 pr-11 py-4 text-base rounded-2xl"
+        style={{ fontSize: "1rem" }}
       />
 
-      {/* Loading spinner */}
+      {/* Loading */}
       {loading && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-          ⏳
+        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+          <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+            style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
         </div>
       )}
 
-      {/* Nút xóa */}
+      {/* Clear button */}
       {query && !loading && (
         <button
           onClick={onClear}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition text-xl"
+          className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-sm transition-all duration-150"
+          style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
         >
           ✕
         </button>

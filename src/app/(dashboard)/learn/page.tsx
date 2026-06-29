@@ -14,44 +14,31 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
+import Navbar from "@/components/ui/Navbar";
 
 type Vocabulary = {
-  id: string;
-  word: string;
-  reading: string;
-  type: string;
-  meaning: string;
-  example: string;
-  exampleMeaning: string;
-  level: string;
-  status: string;
+  id: string; word: string; reading: string; type: string;
+  meaning: string; example: string; exampleMeaning: string;
+  level: string; status: string;
 };
 
 type Step = "flashcard" | "meaning-to-word" | "listening" | "kanji" | "result";
 
-// Kiểm tra từ có chứa chữ Kanji không
 function hasKanji(text: string): boolean {
   return /[\u4e00-\u9faf]/.test(text);
 }
 
-// Tạo 4 đáp án (1 đúng + 3 sai)
-function generateChoices(
-  correct: Vocabulary,
-  allWords: Vocabulary[],
-  type: "word" | "meaning"
-): string[] {
-  const others = allWords
-    .filter((w) => w.id !== correct.id)
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
-
-  const choices =
-    type === "word"
-      ? [correct.word, ...others.map((w) => w.word)]
-      : [correct.meaning, ...others.map((w) => w.meaning)];
-
+function generateChoices(correct: Vocabulary, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
+  const others = allWords.filter((w) => w.id !== correct.id).sort(() => Math.random() - 0.5).slice(0, 3);
+  const choices = type === "word"
+    ? [correct.word, ...others.map((w) => w.word)]
+    : [correct.meaning, ...others.map((w) => w.meaning)];
   return choices.sort(() => Math.random() - 0.5);
 }
+
+const stepLabel: Record<Step, string> = {
+  flashcard: "Thẻ", "meaning-to-word": "Chọn từ", listening: "Nghe", kanji: "Kanji", result: "",
+};
 
 export default function LearnPage() {
   const [words, setWords] = useState<Vocabulary[]>([]);
@@ -66,7 +53,6 @@ export default function LearnPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Kiểm tra đăng nhập
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) router.push("/login");
@@ -74,77 +60,42 @@ export default function LearnPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // Lấy từ cần học
   useEffect(() => {
     const fetchWords = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
-
-        // Lấy toàn bộ vocabulary (300 từ đầu)
-        const allVocabSnap = await getDocs(
-          query(collection(db, "vocabulary"), limit(300))
-        );
-        const allVocab = allVocabSnap.docs.map((d) => ({
-          id: d.id, ...d.data(),
-        })) as Vocabulary[];
-
-        // Lấy IDs đã có trong progress (đã học hoặc đã lưu)
+        const allVocabSnap = await getDocs(query(collection(db, "vocabulary"), limit(300)));
+        const allVocab = allVocabSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
         const learnedIds = await getLearnedWordIds(user.uid);
-
-        // Lấy IDs đã lưu từ dictionary (status: "new" → chưa học)
         const savedNewIds = await getNewSavedWordIds(user.uid);
-
-        console.log("✅ Learned:", learnedIds.size);
-        console.log("📌 Saved from dict:", savedNewIds.size);
-
-        // Ưu tiên 1: Từ đã lưu từ dictionary (status: new)
-        const savedWords = allVocab
-          .filter((w) => savedNewIds.has(w.id))
-          .slice(0, 10);
-
-        // Ưu tiên 2: Từ chưa từng có trong progress
+        const savedWords = allVocab.filter((w) => savedNewIds.has(w.id)).slice(0, 10);
         const brandNewWords = allVocab
           .filter((w) => !learnedIds.has(w.id) && !savedNewIds.has(w.id))
           .slice(0, Math.max(0, 10 - savedWords.length));
-
         const wordsToLearn = [...savedWords, ...brandNewWords].slice(0, 10);
-
-        console.log("📚 Words to learn:", wordsToLearn.map((w) => w.word));
-
         setWords(wordsToLearn);
         setAllWords(allVocab);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
     };
     fetchWords();
   }, []);
 
-  // Tự phát âm từ đầu tiên khi load xong
   useEffect(() => {
-    if (words.length > 0) {
-      setTimeout(() => speakJapanese(words[0].word, false), 500);
-    }
+    if (words.length > 0) setTimeout(() => speakJapanese(words[0].word, false), 500);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [words]);
 
   const currentWord = words[currentIndex];
 
-  // Tạo choices khi chuyển bước
   const prepareChoices = useCallback((step: Step, word: Vocabulary) => {
-    if (step === "meaning-to-word") {
-      setChoices(generateChoices(word, allWords, "word"));
-    } else if (step === "listening") {
-      setChoices(generateChoices(word, allWords, "meaning"));
-    }
+    if (step === "meaning-to-word") setChoices(generateChoices(word, allWords, "word"));
+    else if (step === "listening") setChoices(generateChoices(word, allWords, "meaning"));
     setSelectedAnswer(null);
     setAnswerStatus("idle");
   }, [allWords]);
 
-  // Xác định bước tiếp theo
   const getNextStep = (current: Step, word: Vocabulary): Step | "done" => {
     if (current === "flashcard") return "meaning-to-word";
     if (current === "meaning-to-word") return "listening";
@@ -153,17 +104,13 @@ export default function LearnPage() {
     return "done";
   };
 
-  // Hoàn thành 1 từ → lưu progress
   const goNextWord = async () => {
     const user = auth.currentUser;
     if (user && currentWord) {
-      // Lưu vào users/{uid}/progress/{wordId} với srLevel: 1
       await markNewWordLearned(user.uid, currentWord.id);
       await updateProgress(user.uid, 1);
     }
-
     setLearnedCount((p) => p + 1);
-
     if (currentIndex + 1 >= words.length) {
       setCurrentStep("result");
     } else {
@@ -177,188 +124,168 @@ export default function LearnPage() {
     }
   };
 
-  // Chuyển bước
   const nextStep = async () => {
     const next = getNextStep(currentStep, currentWord);
-    if (next === "done") {
-      await goNextWord();
-    } else {
+    if (next === "done") { await goNextWord(); }
+    else {
       setCurrentStep(next);
       prepareChoices(next, currentWord);
       setIsFlipped(false);
-      if (next === "listening") {
-        setTimeout(() => speakJapanese(currentWord.word, false), 300);
-      }
+      if (next === "listening") setTimeout(() => speakJapanese(currentWord.word, false), 300);
     }
   };
 
-  // Chọn đáp án trắc nghiệm
   const handleChoice = (choice: string) => {
     if (answerStatus !== "idle") return;
     setSelectedAnswer(choice);
-    const correct =
-      currentStep === "meaning-to-word"
-        ? currentWord.word
-        : currentWord.meaning;
+    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
     setAnswerStatus(choice === correct ? "correct" : "wrong");
   };
 
-  // Style nút đáp án
-  const choiceStyle = (choice: string) => {
-    const correct =
-      currentStep === "meaning-to-word"
-        ? currentWord.word
-        : currentWord.meaning;
-    if (answerStatus === "idle") {
-      return "border-2 border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50";
-    }
-    if (choice === correct) return "border-2 border-green-500 bg-green-500 text-white font-bold";
-    if (choice === selectedAnswer) return "border-2 border-red-500 bg-red-500 text-white font-bold";
-    return "border-2 border-gray-200 bg-white text-gray-300";
+  // Choice button style using CSS vars
+  const getChoiceStyle = (choice: string): React.CSSProperties => {
+    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
+    if (answerStatus === "idle") return {};
+    if (choice === correct) return { background: "var(--primary)", color: "#0d1f14", borderColor: "var(--primary)" };
+    if (choice === selectedAnswer) return { background: "#ef4444", color: "#fff", borderColor: "#ef4444" };
+    return { opacity: 0.35 };
   };
 
-  // Step indicators
   const stepList = (word: Vocabulary): Step[] => {
     const steps: Step[] = ["flashcard", "meaning-to-word", "listening"];
     if (word && hasKanji(word.word)) steps.push("kanji");
     return steps;
   };
 
-  const stepLabel: Record<Step, string> = {
-    flashcard: "Thẻ",
-    "meaning-to-word": "Chọn từ",
-    listening: "Nghe",
-    kanji: "Kanji",
-    result: "",
-  };
+  const progress = words.length > 0 ? (learnedCount / words.length) * 100 : 0;
 
   // ===== LOADING =====
   if (loading) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center">
-        <div className="text-4xl mb-3">⏳</div>
-        <p className="text-gray-400">Đang tải bài học...</p>
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải bài học...</p>
       </div>
     </div>
   );
 
-  // ===== HỌC HẾT TỪ =====
+  // ===== HẾT TỪ =====
   if (words.length === 0) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center px-4">
+      <div className="card p-12 text-center max-w-md animate-scale-in">
         <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Tuyệt vời!</h2>
-        <p className="text-gray-500 mb-6">Bạn đã học hết tất cả từ mới!</p>
-        <Link href="/dashboard"
-          className="px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition">
-          Về Dashboard
-        </Link>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>Tuyệt vời!</h2>
+        <p className="mb-6" style={{ color: "var(--text-muted)" }}>
+          Bạn đã học hết tất cả từ mới rồi. Hãy quay lại ôn tập!
+        </p>
+        <div className="flex flex-col gap-3">
+          <Link href="/review" className="btn btn-primary py-3 rounded-xl">🔁 Ôn tập ngay</Link>
+          <Link href="/dashboard" className="btn btn-ghost py-3 rounded-xl">Về Dashboard</Link>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-gray-100">
-
-      {/* Menu */}
-      <nav className="bg-white border-b border-gray-100 px-6 py-4 flex justify-between items-center">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="text-2xl">🎌</span>
-          <span className="text-xl font-bold text-red-600">Nihongo Master</span>
-        </Link>
-        <span className="text-gray-400 text-sm">{currentIndex + 1} / {words.length} từ</span>
-      </nav>
+    <div className="min-h-[100dvh] bg-page">
+      <Navbar userEmail="" showBackToDashboard />
 
       <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Thanh tiến độ + Step indicators */}
-        <div className="mb-5">
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+        {/* Progress bar */}
+        <div className="mb-5 animate-fade-in">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+              {currentIndex + 1} / {words.length} từ
+            </span>
+            <span className="text-xs font-medium tabular" style={{ color: "var(--primary)" }}>
+              {Math.round(progress)}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 rounded-full" style={{ background: "var(--surface-2)" }}>
             <div
-              className="bg-red-500 h-1.5 rounded-full transition-all"
-              style={{ width: `${(learnedCount / words.length) * 100}%` }}
+              className="h-1.5 rounded-full transition-all duration-700 ease-spring"
+              style={{ width: `${progress}%`, background: "var(--primary)" }}
             />
           </div>
 
+          {/* Step indicators */}
           {currentStep !== "result" && currentWord && (
-            <div className="flex justify-center items-center gap-2">
-              {stepList(currentWord).map((step, i) => (
-                <div key={step} className="flex items-center gap-2">
-                  <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                    currentStep === step
-                      ? "bg-red-600 text-white"
-                      : stepList(currentWord).indexOf(currentStep) > i
-                      ? "bg-green-500 text-white"
-                      : "bg-gray-200 text-gray-400"
-                  }`}>
-                    {stepList(currentWord).indexOf(currentStep) > i ? "✓" : i + 1}
-                    <span className="ml-1">{stepLabel[step]}</span>
+            <div className="flex justify-center items-center gap-2 mt-3">
+              {stepList(currentWord).map((step, i) => {
+                const stepIdx = stepList(currentWord).indexOf(currentStep);
+                const isPast = stepIdx > i;
+                const isCurrent = currentStep === step;
+                return (
+                  <div key={step} className="flex items-center gap-2">
+                    <div
+                      className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all duration-300"
+                      style={
+                        isCurrent
+                          ? { background: "var(--primary)", color: "#0d1f14" }
+                          : isPast
+                          ? { background: "rgba(34,197,94,0.15)", color: "var(--primary)" }
+                          : { background: "var(--surface-2)", color: "var(--text-faint)" }
+                      }
+                    >
+                      {isPast ? "✓" : i + 1}
+                      <span className="ml-0.5">{stepLabel[step]}</span>
+                    </div>
+                    {i < stepList(currentWord).length - 1 && (
+                      <div className="w-4 h-px" style={{ background: "var(--border-color)" }} />
+                    )}
                   </div>
-                  {i < stepList(currentWord).length - 1 && (
-                    <div className="w-4 h-0.5 bg-gray-300" />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* ===== BƯỚC 1: FLASHCARD ===== */}
+        {/* ===== FLASHCARD ===== */}
         {currentStep === "flashcard" && currentWord && (
-          <div>
+          <div className="animate-scale-in">
             <div
+              className="flip-card cursor-pointer select-none"
+              style={{ height: "320px" }}
               onClick={() => setIsFlipped(!isFlipped)}
-              className="cursor-pointer select-none"
-              style={{ perspective: "1000px" }}
             >
-              <div style={{
-                transition: "transform 0.5s",
-                transformStyle: "preserve-3d",
-                transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-                position: "relative",
-                height: "320px",
-              }}>
+              <div className={`flip-card-inner ${isFlipped ? "flipped" : ""}`}>
 
-                {/* MẶT TRƯỚC */}
-                <div
-                  className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
-                  style={{ backfaceVisibility: "hidden" }}
-                >
+                {/* Front */}
+                <div className="flip-card-front card flex flex-col rounded-3xl">
                   <div className="flex gap-2 p-4">
                     <SpeakButton text={currentWord.word} size="sm" />
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-                    <div className="text-xs text-gray-300 mb-4 uppercase tracking-wide">
+                    <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-faint)" }}>
                       Bấm để xem nghĩa
-                    </div>
+                    </p>
                     {currentWord.word !== currentWord.reading && (
-                      <div className="text-lg text-red-400 mb-2">
+                      <div className="text-lg mb-2" style={{ color: "var(--primary)" }}>
                         {currentWord.reading}
                       </div>
                     )}
-                    <div className="text-6xl font-bold text-gray-900">
+                    <div className="font-jp text-6xl font-bold" style={{ color: "var(--text)" }}>
                       {currentWord.word}
                     </div>
                   </div>
                 </div>
 
-                {/* MẶT SAU */}
-                <div
-                  className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
-                  style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
-                >
+                {/* Back */}
+                <div className="flip-card-back card flex flex-col rounded-3xl">
                   <div className="flex gap-2 p-4">
                     <SpeakButton text={currentWord.word} size="sm" />
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-                    <div className="text-4xl font-bold text-gray-900 mb-3">
+                    <div className="text-4xl font-bold mb-3" style={{ color: "var(--text)" }}>
                       {currentWord.meaning}
                     </div>
-                    <div className="text-sm text-gray-400 bg-gray-100 px-3 py-1 rounded-lg">
+                    <span className="badge" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
                       {currentWord.type}
-                    </div>
+                    </span>
                   </div>
                 </div>
 
@@ -368,54 +295,57 @@ export default function LearnPage() {
             {isFlipped ? (
               <button
                 onClick={nextStep}
-                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition"
+                className="btn btn-primary w-full py-4 mt-5 rounded-2xl text-base"
               >
                 Tiếp tục →
               </button>
             ) : (
-              <p className="text-center text-gray-400 text-sm mt-4">
+              <p className="text-center text-sm mt-4" style={{ color: "var(--text-faint)" }}>
                 💡 Bấm vào thẻ để xem nghĩa
               </p>
             )}
           </div>
         )}
 
-        {/* ===== BƯỚC 2: NHÌN NGHĨA → CHỌN TỪ ===== */}
+        {/* ===== MEANING TO WORD ===== */}
         {currentStep === "meaning-to-word" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-3">
+              <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
                 Chọn từ tiếng Nhật đúng
-              </div>
-              <div className="text-3xl font-bold text-gray-900">
-                {currentWord.meaning}
-              </div>
-              <div className="text-sm text-gray-400 mt-1">[{currentWord.type}]</div>
+              </p>
+              <div className="text-3xl font-bold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
+              <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>[{currentWord.type}]</div>
             </div>
-
             <div className="flex flex-col gap-3">
               {choices.map((choice, i) => (
                 <button
                   key={i}
                   onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
+                  className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "2px solid var(--border-color)",
+                    color: "var(--text)",
+                    ...getChoiceStyle(choice),
+                  }}
                 >
-                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
+                    style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
                     {i + 1}
                   </span>
-                  <span className="text-lg">{choice}</span>
+                  <span className="font-jp text-lg">{choice}</span>
                 </button>
               ))}
             </div>
-
             {answerStatus !== "idle" && (
               <button
                 onClick={nextStep}
-                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-                  answerStatus === "correct"
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-red-500 hover:bg-red-600"
-                }`}
+                className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
+                style={answerStatus === "correct"
+                  ? { background: "var(--primary)", color: "#0d1f14" }
+                  : { background: "#ef4444", color: "#fff" }
+                }
               >
                 {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
               </button>
@@ -423,45 +353,50 @@ export default function LearnPage() {
           </div>
         )}
 
-        {/* ===== BƯỚC 3: NGHE → CHỌN NGHĨA ===== */}
+        {/* ===== LISTENING ===== */}
         {currentStep === "listening" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-6">
+          <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
+              <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-faint)" }}>
                 Nghe và chọn nghĩa đúng
-              </div>
-              <div className="flex justify-center gap-4">
+              </p>
+              <div className="flex justify-center gap-4 mb-3">
                 <SpeakButton text={currentWord.word} size="lg" />
                 <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
-              <div className="text-gray-400 text-sm mt-3">
+              <div className="text-sm font-jp" style={{ color: "var(--text-muted)" }}>
                 {currentWord.word} · {currentWord.reading}
               </div>
             </div>
-
             <div className="flex flex-col gap-3">
               {choices.map((choice, i) => (
                 <button
                   key={i}
                   onClick={() => handleChoice(choice)}
-                  className={`w-full py-4 px-5 rounded-2xl text-left transition flex items-center gap-3 ${choiceStyle(choice)}`}
+                  className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
+                  style={{
+                    background: "var(--surface-2)",
+                    border: "2px solid var(--border-color)",
+                    color: "var(--text)",
+                    ...getChoiceStyle(choice),
+                  }}
                 >
-                  <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center flex-shrink-0">
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
+                    style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
                     {i + 1}
                   </span>
                   <span>{choice}</span>
                 </button>
               ))}
             </div>
-
             {answerStatus !== "idle" && (
               <button
                 onClick={nextStep}
-                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
-                  answerStatus === "correct"
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-red-500 hover:bg-red-600"
-                }`}
+                className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
+                style={answerStatus === "correct"
+                  ? { background: "var(--primary)", color: "#0d1f14" }
+                  : { background: "#ef4444", color: "#fff" }
+                }
               >
                 {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
               </button>
@@ -469,13 +404,12 @@ export default function LearnPage() {
           </div>
         )}
 
-        {/* ===== BƯỚC 4: XEM KANJI ===== */}
+        {/* ===== KANJI ===== */}
         {currentStep === "kanji" && currentWord && (
-          <div className="bg-white rounded-3xl shadow-sm p-8 text-center">
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-6">
+          <div className="card p-8 text-center animate-scale-in rounded-3xl">
+            <p className="text-xs uppercase tracking-widest mb-6" style={{ color: "var(--text-faint)" }}>
               Ghi nhớ cách viết Kanji
-            </div>
-
+            </p>
             <div className="flex justify-center gap-4 mb-6 flex-wrap">
               {currentWord.word
                 .split("")
@@ -483,63 +417,63 @@ export default function LearnPage() {
                 .map((kanji, i) => (
                   <div
                     key={i}
-                    className="w-32 h-32 border-2 border-slate-400 rounded-2xl flex items-center justify-center bg-white shadow-md"
+                    className="w-32 h-32 rounded-2xl flex items-center justify-center"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "2px solid var(--border-strong)",
+                      boxShadow: "var(--shadow-md)",
+                    }}
                   >
-                    <span className="text-6xl font-black text-slate-950">
+                    <span className="font-jp text-6xl font-black" style={{ color: "var(--text)" }}>
                       {kanji}
                     </span>
                   </div>
                 ))}
             </div>
-
-            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6">
+            <div className="rounded-2xl p-4 text-left mb-6" style={{ background: "var(--surface-2)" }}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-red-500 font-medium">{currentWord.reading}</span>
-                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-lg">
+                <span className="font-jp font-medium" style={{ color: "var(--primary)" }}>
+                  {currentWord.reading}
+                </span>
+                <span className="badge" style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
                   {currentWord.type}
                 </span>
               </div>
-              <div className="text-gray-800 font-semibold">{currentWord.meaning}</div>
+              <div className="font-semibold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
             </div>
-
             <button
               onClick={nextStep}
-              className="w-full py-4 bg-green-500 text-white font-semibold rounded-2xl hover:bg-green-600 transition"
+              className="btn btn-primary w-full py-4 rounded-2xl text-base"
             >
               ✅ Đã ghi nhớ — Từ tiếp theo
             </button>
           </div>
         )}
 
-        {/* ===== KẾT QUẢ ===== */}
+        {/* ===== RESULT ===== */}
         {currentStep === "result" && (
-          <div className="bg-white rounded-3xl shadow-sm p-12 text-center">
+          <div className="card p-12 text-center animate-scale-in rounded-3xl">
             <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
               Hoàn thành buổi học!
             </h2>
-            <p className="text-gray-500 mb-8">
+            <p className="mb-8" style={{ color: "var(--text-muted)" }}>
               Bạn vừa học được{" "}
-              <span className="font-bold text-red-600">{learnedCount} từ mới</span>
+              <span className="font-bold" style={{ color: "var(--primary)" }}>{learnedCount} từ mới</span>
             </p>
             <div className="flex flex-col gap-3">
               <Link
                 href="/learn"
                 onClick={() => window.location.reload()}
-                className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition"
+                className="btn btn-primary py-3 rounded-xl"
               >
                 🚀 Học tiếp 10 từ nữa
               </Link>
-              <Link
-                href="/progress"
-                className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition"
-              >
-                📈 Xem tiến độ
+              <Link href="/review" className="btn btn-ghost py-3 rounded-xl">
+                🔁 Ôn tập ngay
               </Link>
-              <Link
-                href="/dashboard"
-                className="py-3 text-gray-400 hover:text-gray-600 transition"
-              >
+              <Link href="/dashboard" className="py-3 text-sm text-center transition-colors"
+                style={{ color: "var(--text-muted)" }}>
                 Về Dashboard
               </Link>
             </div>
@@ -547,6 +481,6 @@ export default function LearnPage() {
         )}
 
       </div>
-    </main>
+    </div>
   );
 }

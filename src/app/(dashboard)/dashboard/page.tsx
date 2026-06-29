@@ -2,12 +2,36 @@
 
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getProgress, getSRStats, getDueWords, getUserWordStatuses, ProgressData, UserWordStatus } from "@/lib/progress";
+import {
+  getProgress, getSRStats, getDueWords, getUserWordStatuses,
+  ProgressData, UserWordStatus
+} from "@/lib/progress";
 import NotificationSetup from "@/components/ui/NotificationSetup";
 import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
+import Navbar from "@/components/ui/Navbar";
+
+const srColors: Record<number, string> = {
+  1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#3b82f6", 5: "#22c55e",
+};
+const srLabels: Record<number, string> = {
+  1: "1 tiếng", 2: "1 ngày", 3: "3 ngày", 4: "1 tuần", 5: "2 tháng",
+};
+const srBg: Record<number, string> = {
+  1: "rgba(239,68,68,0.1)", 2: "rgba(249,115,22,0.1)", 3: "rgba(234,179,8,0.1)",
+  4: "rgba(59,130,246,0.1)", 5: "rgba(34,197,94,0.1)",
+};
+
+const navTiles = [
+  { icon: "🎯", label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",      active: true  },
+  { icon: "🔁", label: "Ôn tập",       sub: "",                       href: "/review",     active: true  },
+  { icon: "📚", label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary", active: true  },
+  { icon: "📖", label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary", active: true  },
+  { icon: "📈", label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",   active: true  },
+  { icon: "✍️", label: "Trắc nghiệm",  sub: "Sắp có",                href: "#",           active: false },
+];
 
 export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState("");
@@ -22,24 +46,14 @@ export default function DashboardPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push("/login"); return; }
-
       setUserEmail(user.email || "");
-
-      // ✅ Truyền user.uid vào tất cả hàm
       const [prog, stats, due, words] = await Promise.all([
-        getProgress(user.uid),
-        getSRStats(user.uid),
-        getDueWords(user.uid),
-        getUserWordStatuses(user.uid),
+        getProgress(user.uid), getSRStats(user.uid),
+        getDueWords(user.uid), getUserWordStatuses(user.uid),
       ]);
-
-      setProgress(prog);
-      setSrStats(stats);
-      setDueCount(due.length);
-      setUserWords(words);
+      setProgress(prog); setSrStats(stats);
+      setDueCount(due.length); setUserWords(words);
       setLoading(false);
-
-      // Kiểm tra thông báo
       if (typeof window !== "undefined" && canNotifyNow()) {
         const todayStr = new Date().toISOString().split("T")[0];
         const studiedToday = (prog.dailyHistory?.[todayStr] || 0) > 0;
@@ -47,72 +61,55 @@ export default function DashboardPage() {
         setLastNotifyTime();
       }
     });
-
     return () => unsubscribe();
   }, [router]);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    router.push("/");
-  };
-
   const totalLearned = Object.values(srStats).reduce((a, b) => a + b, 0);
   const maxSR = Math.max(...Object.values(srStats), 1);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayCount = progress?.dailyHistory?.[todayStr] || 0;
   const groupedWords = [1, 2, 3, 4, 5].map((level) => ({
-    level,
-    words: userWords.filter((w) => w.srLevel === level),
+    level, words: userWords.filter((w) => w.srLevel === level),
   }));
 
-  const srColors: Record<number, string> = {
-    1: "bg-red-400",
-    2: "bg-orange-400",
-    3: "bg-yellow-400",
-    4: "bg-blue-400",
-    5: "bg-green-500",
-  };
-
-  const srLabels: Record<number, string> = {
-    1: "1 tiếng",
-    2: "1 ngày",
-    3: "3 ngày",
-    4: "1 tuần",
-    5: "2 tháng",
-  };
-
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="text-4xl">⏳</div>
+    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải...</p>
+      </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="min-h-[100dvh] bg-page">
+      <Navbar userEmail={userEmail} />
 
-      {/* Menu */}
-      <nav className="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🎌</span>
-          <span className="text-xl font-bold text-red-600">Nihongo Master</span>
+      <div className="max-w-3xl mx-auto px-4 py-6">
+
+        {/* Greeting */}
+        <div className="mb-6 animate-fade-up">
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
+            こんにちは, {userEmail.split("@")[0]} 👋
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            Hôm nay học {todayCount} từ · Streak {progress?.streak || 0} ngày 🔥
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-500 text-sm">👤 {userEmail}</span>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-red-600 border border-red-600 rounded-lg hover:bg-red-50 transition text-sm"
-          >
-            Đăng xuất
-          </button>
-        </div>
-      </nav>
 
-      <div className="max-w-3xl mx-auto px-6 py-8">
-
-        <div className="flex gap-2 mb-6">
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 animate-fade-up">
           {(["overview", "memory"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition ${activeTab === tab ? "bg-red-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-spring
+                ${activeTab === tab
+                  ? "text-[#0d1f14] shadow-green-sm"
+                  : "bg-surface-2 hover:bg-surface-3"
+                }`}
+              style={activeTab === tab ? { background: "var(--primary)" } : { color: "var(--text-muted)" }}
             >
               {tab === "overview" ? "Tổng quan" : "Kho từ theo mức nhớ"}
             </button>
@@ -121,134 +118,168 @@ export default function DashboardPage() {
 
         {activeTab === "overview" ? (
           <>
-            {/* ===== STATS ===== */}
-            <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
-            <div className="text-3xl mb-1">🔥</div>
-            <div className="text-2xl font-bold text-orange-500">{progress?.streak || 0}</div>
-            <div className="text-xs text-gray-400 mt-1">Streak</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
-            <div className="text-3xl mb-1">📚</div>
-            <div className="text-2xl font-bold text-blue-500">{totalLearned}</div>
-            <div className="text-xs text-gray-400 mt-1">Đã học</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
-            <div className="text-3xl mb-1">⭐</div>
-            <div className="text-2xl font-bold text-green-500">
-              {progress?.dailyHistory?.[new Date().toISOString().split("T")[0]] || 0}
-            </div>
-            <div className="text-xs text-gray-400 mt-1">Hôm nay</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 text-center shadow-sm">
-            <div className="text-3xl mb-1">⏰</div>
-            <div className="text-2xl font-bold text-red-500">{dueCount}</div>
-            <div className="text-xs text-gray-400 mt-1">Cần ôn</div>
-          </div>
-        </div>
-
-        {/* ===== BIỂU ĐỒ SR ===== */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
-          <h2 className="font-bold text-gray-700 mb-1">📊 Phân bố từ vựng theo mức ghi nhớ</h2>
-          <p className="text-xs text-gray-400 mb-5">Spaced Repetition — càng lên cao càng nhớ lâu</p>
-
-          <div className="flex items-end justify-around gap-3 h-40">
-            {[1, 2, 3, 4, 5].map((level) => {
-              const count = srStats[level] || 0;
-              const height = maxSR > 0 ? (count / maxSR) * 100 : 0;
-              return (
-                <div key={level} className="flex flex-col items-center gap-2 flex-1">
-                  <span className="text-xs font-bold text-gray-600">
-                    {count > 0 ? count : ""}
-                  </span>
-                  <div className="w-full flex items-end" style={{ height: "100px" }}>
-                    <div
-                      className={`w-full rounded-t-xl transition-all ${srColors[level]} ${count === 0 ? "opacity-20" : ""}`}
-                      style={{ height: count === 0 ? "4px" : `${Math.max(height, 8)}%` }}
-                    />
-                  </div>
-                  <div className="text-center">
-                    <div className="text-sm font-bold text-gray-700">Mức {level}</div>
-                    <div className="text-xs text-gray-400">{srLabels[level]}</div>
-                  </div>
+            {/* Stats grid */}
+            <div className="grid grid-cols-4 gap-3 mb-6 animate-fade-up">
+              {[
+                { emoji: "🔥", value: progress?.streak || 0, label: "Streak", color: "#f97316" },
+                { emoji: "📚", value: totalLearned,           label: "Đã học",  color: "#3b82f6" },
+                { emoji: "⭐", value: todayCount,              label: "Hôm nay", color: "var(--primary)" },
+                { emoji: "⏰", value: dueCount,                label: "Cần ôn",  color: "#ef4444" },
+              ].map(({ emoji, value, label, color }) => (
+                <div key={label} className="card p-4 text-center">
+                  <div className="text-2xl mb-1">{emoji}</div>
+                  <div className="tabular text-xl font-bold" style={{ color }}>{value}</div>
+                  <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{label}</div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
 
-          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between text-xs text-gray-400">
-            <span>Tổng đã học: <span className="font-bold text-gray-600">{totalLearned} từ</span></span>
-            <span>Chưa học: <span className="font-bold text-gray-600">{968 - totalLearned} từ</span></span>
-          </div>
-        </div>
+            {/* SR Chart */}
+            <div className="card p-6 mb-6 animate-fade-up delay-75">
+              <h2 className="font-semibold mb-0.5" style={{ color: "var(--text)" }}>
+                Phân bố mức ghi nhớ
+              </h2>
+              <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
+                Spaced Repetition — mức cao hơn = nhớ lâu hơn
+              </p>
+              <div className="flex items-end justify-around gap-3 h-32">
+                {[1, 2, 3, 4, 5].map((level) => {
+                  const count = srStats[level] || 0;
+                  const pct = maxSR > 0 ? (count / maxSR) * 100 : 0;
+                  return (
+                    <div key={level} className="flex flex-col items-center gap-2 flex-1">
+                      <span className="tabular text-xs font-bold" style={{ color: "var(--text-muted)" }}>
+                        {count > 0 ? count : ""}
+                      </span>
+                      <div className="w-full flex items-end" style={{ height: "80px" }}>
+                        <div
+                          className="w-full rounded-t-xl transition-all duration-700 ease-spring"
+                          style={{
+                            height: count === 0 ? "4px" : `${Math.max(pct, 8)}%`,
+                            background: count === 0
+                              ? "var(--surface-3)"
+                              : `linear-gradient(180deg, ${srColors[level]}, ${srColors[level]}88)`,
+                          }}
+                        />
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                          Mức {level}
+                        </div>
+                        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                          {srLabels[level]}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 pt-4 flex justify-between text-xs" style={{ borderTop: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
+                <span>Đã học: <strong style={{ color: "var(--text)" }}>{totalLearned} từ</strong></span>
+                <span>Còn lại: <strong style={{ color: "var(--text)" }}>{968 - totalLearned} từ</strong></span>
+              </div>
+            </div>
 
-            {/* ===== TÍNH NĂNG ===== */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[
-            { icon: "🎯", label: "Học từ mới", sub: "10 từ mỗi buổi", href: "/learn", active: true, highlight: false },
-            { icon: "🔁", label: "Ôn tập", sub: dueCount > 0 ? `${dueCount} từ cần ôn` : "Chưa có từ cần ôn", href: "/review", active: dueCount > 0, highlight: dueCount > 0 },
-            { icon: "📚", label: "Từ vựng", sub: "968 từ N5", href: "/vocabulary", active: true, highlight: false },
-            { icon: "📖", label: "Từ điển", sub: "Tra cứu từ vựng", href: "/dictionary", active: true, highlight: false },
-            { icon: "📈", label: "Tiến độ", sub: "Xem chi tiết", href: "/progress", active: true, highlight: false },
-            { icon: "✍️", label: "Trắc nghiệm", sub: "Sắp có", href: "#", active: false, highlight: false },
-          ].map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`rounded-2xl p-5 shadow-sm transition ${
-                item.highlight
-                  ? "bg-red-600 text-white hover:bg-red-700"
-                  : item.active
-                  ? "bg-white hover:shadow-md"
-                  : "bg-white opacity-50 pointer-events-none"
-              }`}
-            >
-              <div className="text-3xl mb-2">{item.icon}</div>
-              <div className={`font-semibold ${item.highlight ? "text-white" : "text-gray-700"}`}>
-                {item.label}
-              </div>
-              <div className={`text-xs mt-1 ${item.highlight ? "text-red-100" : "text-gray-400"}`}>
-                {item.sub}
-              </div>
-            </Link>
-          ))}
+            {/* Nav tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up delay-150">
+              {navTiles.map((tile, i) => {
+                const isDue = tile.href === "/review" && dueCount > 0;
+                const sub = tile.href === "/review"
+                  ? (dueCount > 0 ? `${dueCount} từ cần ôn` : "Chưa có từ cần ôn")
+                  : tile.sub;
+
+                return (
+                  <Link
+                    key={tile.label}
+                    href={tile.href}
+                    className={`card p-5 transition-all duration-200 ease-spring animate-fade-up
+                      ${!tile.active ? "opacity-40 pointer-events-none" : ""}
+                      ${isDue ? "ring-1" : ""}
+                    `}
+                    style={{
+                      animationDelay: `${i * 60}ms`,
+                      ...(isDue ? {
+                        background: "var(--primary)",
+                        ringColor: "var(--primary)",
+                        borderColor: "var(--primary)",
+                      } : {}),
+                    }}
+                  >
+                    <div className="text-2xl mb-2">{tile.icon}</div>
+                    <div className="font-semibold text-sm" style={{ color: isDue ? "#0d1f14" : "var(--text)" }}>
+                      {tile.label}
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: isDue ? "#0d5a22" : "var(--text-muted)" }}>
+                      {sub}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </>
         ) : (
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="font-bold text-gray-700">🗂️ Kho từ theo mức nhớ</h2>
-                <p className="text-xs text-gray-400">Tất cả từ đã lưu từ từ điển hoặc đã học từ Learn sẽ xuất hiện ở đây theo mức nhớ 1–5</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
+          /* Memory tab */
+          <div className="card p-6 animate-fade-up">
+            <h2 className="font-semibold mb-1" style={{ color: "var(--text)" }}>
+              Kho từ theo mức nhớ
+            </h2>
+            <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
+              Tất cả từ đã học hoặc lưu từ từ điển
+            </p>
+            <div className="space-y-3">
               {groupedWords.map(({ level, words }) => (
-                <div key={level} className="rounded-2xl border border-gray-100 p-4">
+                <div key={level} className="rounded-2xl p-4"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}>
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <div className="font-semibold text-gray-700">Mức {level}</div>
-                      <div className="text-xs text-gray-400">{srLabels[level]}</div>
+                      <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>
+                        Mức {level}
+                      </span>
+                      <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>
+                        ({srLabels[level]})
+                      </span>
                     </div>
-                    <span className="text-sm font-bold text-gray-600">{words.length} từ</span>
+                    <span
+                      className="badge"
+                      style={{ background: srBg[level], color: srColors[level] }}
+                    >
+                      {words.length} từ
+                    </span>
                   </div>
-
                   {words.length === 0 ? (
-                    <div className="text-sm text-gray-400 py-2">Chưa có từ nào ở mức này</div>
+                    <p className="text-sm" style={{ color: "var(--text-faint)" }}>
+                      Chưa có từ nào ở mức này
+                    </p>
                   ) : (
-                    <div className="space-y-2">
-                      {words.map((word) => (
-                        <div key={word.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                    <div className="space-y-1.5">
+                      {words.slice(0, 5).map((word) => (
+                        <div
+                          key={word.id}
+                          className="flex items-center justify-between rounded-xl px-3 py-2"
+                          style={{ background: "var(--surface)" }}
+                        >
                           <div>
-                            <div className="font-medium text-gray-700">{word.word}</div>
-                            <div className="text-xs text-gray-400">{word.reading} • {word.meaning}</div>
+                            <span className="font-jp font-medium text-sm" style={{ color: "var(--text)" }}>
+                              {word.word}
+                            </span>
+                            <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>
+                              {word.reading} · {word.meaning}
+                            </span>
                           </div>
-                          <span className={`text-xs px-2 py-1 rounded-full ${word.status === "mastered" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
-                            {word.status === "mastered" ? "Đã thuộc" : "Đang học"}
+                          <span className="badge"
+                            style={{
+                              background: word.status === "mastered" ? "rgba(34,197,94,0.1)" : "rgba(249,115,22,0.1)",
+                              color: word.status === "mastered" ? "#22c55e" : "#f97316",
+                            }}>
+                            {word.status === "mastered" ? "Thuộc" : "Đang học"}
                           </span>
                         </div>
                       ))}
+                      {words.length > 5 && (
+                        <p className="text-xs text-center pt-1" style={{ color: "var(--text-faint)" }}>
+                          +{words.length - 5} từ khác
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -256,10 +287,9 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
       </div>
 
       <NotificationSetup />
-    </main>
+    </div>
   );
 }

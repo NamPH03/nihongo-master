@@ -1,154 +1,126 @@
-// src/app/(auth)/register/page.tsx
-// Trang đăng ký tài khoản mới
-
-"use client"; // Cho Next.js biết đây là trang có tương tác người dùng
+"use client";
 
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function RegisterPage() {
-  // Lưu trữ giá trị người dùng gõ vào
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState(""); // Thông báo lỗi
-  const [loading, setLoading] = useState(false); // Đang xử lý?
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  const router = useRouter(); // Dùng để chuyển trang
-
-  // Hàm xử lý khi bấm nút Đăng ký
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault(); // Ngăn trang bị reload
+    e.preventDefault();
     setError("");
-
-    // Kiểm tra mật khẩu khớp nhau chưa
-    if (password !== confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp!");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Mật khẩu phải có ít nhất 6 ký tự!");
-      return;
-    }
-
+    if (password !== confirmPassword) { setError("Mật khẩu xác nhận không khớp."); return; }
+    if (password.length < 6) { setError("Mật khẩu phải có ít nhất 6 ký tự."); return; }
     setLoading(true);
-
     try {
-      // Gọi Firebase tạo tài khoản mới
       await createUserWithEmailAndPassword(auth, email, password);
-      // Thành công → chuyển vào dashboard
       router.push("/dashboard");
     } catch (err: unknown) {
-      const error = err as { code?: string };
-      // Xử lý các lỗi thường gặp
-      if (error.code === "auth/user-not-found") {
-        setError("Email này chưa được đăng ký!");
-      } else if (error.code === "auth/wrong-password") {
-        setError("Sai mật khẩu, thử lại nhé!");
-      } else if (error.code === "auth/invalid-credential") {
-        setError("Email hoặc mật khẩu không đúng!");
-      } else {
-        setError("Có lỗi xảy ra, thử lại nhé!");
-      }
+      const e = err as { code?: string };
+      if (e.code === "auth/email-already-in-use") setError("Email này đã được đăng ký.");
+      else if (e.code === "auth/invalid-email") setError("Email không hợp lệ.");
+      else setError("Có lỗi xảy ra, thử lại nhé.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-sm p-8 w-full max-w-md">
+    <main className="min-h-[100dvh] bg-page flex items-center justify-center px-4 relative overflow-hidden">
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <span className="text-3xl">🎌</span>
-            <span className="text-xl font-bold text-red-600">Nihongo Master</span>
+      <div className="pointer-events-none fixed inset-0 -z-0">
+        <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[500px] h-[400px] rounded-full blur-3xl opacity-15"
+          style={{ background: "radial-gradient(circle, var(--primary-light), transparent 70%)" }} />
+      </div>
+
+      <div className="fixed top-4 right-4 z-50">
+        <ThemeToggle />
+      </div>
+
+      <div className="w-full max-w-[400px] card p-8 animate-scale-in relative z-10">
+
+        <div className="text-center mb-7">
+          <Link href="/" className="inline-flex items-center gap-2 mb-5">
+            <span className="text-2xl">🌿</span>
+            <span className="font-bold text-lg" style={{ color: "var(--primary)" }}>
+              Nihongo Master
+            </span>
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-4">
+          <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--text)" }}>
             Tạo tài khoản mới
           </h1>
-          <p className="text-gray-500 mt-1">Bắt đầu hành trình học tiếng Nhật</p>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            Bắt đầu hành trình học tiếng Nhật
+          </p>
         </div>
 
-        {/* Hiển thị lỗi nếu có */}
         {error && (
-          <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">
-            ⚠️ {error}
+          <div className="mb-4 px-4 py-3 rounded-xl text-sm"
+            style={{
+              background: "rgba(239,68,68,0.08)",
+              color: "#ef4444",
+              border: "1px solid rgba(239,68,68,0.2)",
+            }}>
+            {error}
           </div>
         )}
 
-        {/* Form đăng ký */}
         <form onSubmit={handleRegister} className="flex flex-col gap-4">
-
-          {/* Ô nhập Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
               Email
             </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@gmail.com"
-              required
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="example@gmail.com" required className="input" />
           </div>
 
-          {/* Ô nhập Mật khẩu */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
               Mật khẩu
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Ít nhất 6 ký tự"
-              required
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="Ít nhất 6 ký tự" required className="input" />
           </div>
 
-          {/* Ô xác nhận Mật khẩu */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
               Xác nhận mật khẩu
             </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Nhập lại mật khẩu"
-              required
-              className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Nhập lại mật khẩu" required className="input" />
           </div>
 
-          {/* Nút Đăng ký */}
           <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+            type="submit" disabled={loading}
+            className="btn btn-primary w-full py-3 mt-1 rounded-xl text-base"
           >
-            {loading ? "Đang tạo tài khoản..." : "🚀 Đăng ký miễn phí"}
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Đang tạo tài khoản...
+              </span>
+            ) : "Đăng ký miễn phí"}
           </button>
-
         </form>
 
-        {/* Link sang trang đăng nhập */}
-        <p className="text-center text-gray-500 text-sm mt-6">
+        <p className="text-center text-sm mt-6" style={{ color: "var(--text-muted)" }}>
           Đã có tài khoản?{" "}
-          <Link href="/login" className="text-red-600 font-medium hover:underline">
+          <Link href="/login" className="font-semibold hover:underline" style={{ color: "var(--primary)" }}>
             Đăng nhập ngay
           </Link>
         </p>
-
       </div>
     </main>
   );

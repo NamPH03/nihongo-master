@@ -1,6 +1,3 @@
-// src/app/(dashboard)/vocabulary/page.tsx
-// Trang hiển thị danh sách từ vựng — có thể lọc theo cấp độ
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -8,219 +5,177 @@ import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Navbar from "@/components/ui/Navbar";
+import { speakJapanese } from "@/lib/speech";
 
-// Định nghĩa kiểu dữ liệu cho 1 từ vựng
 type Vocabulary = {
-  id: string;
-  word: string;
-  reading: string;
-  meaning: string;
-  level: string;
-  type: string;
-  example: string;
-  exampleMeaning: string;
+  id: string; word: string; reading: string; meaning: string;
+  level: string; type: string; example: string; exampleMeaning: string;
 };
 
-// Màu sắc cho từng cấp độ
-const levelColors: Record<string, string> = {
-  N5: "bg-green-100 text-green-700",
-  N4: "bg-blue-100 text-blue-700",
-  N3: "bg-yellow-100 text-yellow-700",
-  N2: "bg-orange-100 text-orange-700",
-  N1: "bg-red-100 text-red-700",
+const levelColors: Record<string, { bg: string; color: string }> = {
+  N5: { bg: "rgba(34,197,94,0.1)",   color: "#22c55e" },
+  N4: { bg: "rgba(59,130,246,0.1)",  color: "#3b82f6" },
+  N3: { bg: "rgba(234,179,8,0.1)",   color: "#eab308" },
+  N2: { bg: "rgba(249,115,22,0.1)",  color: "#f97316" },
+  N1: { bg: "rgba(239,68,68,0.1)",   color: "#ef4444" },
 };
 
 export default function VocabularyPage() {
   const [words, setWords] = useState<Vocabulary[]>([]);
   const [filtered, setFiltered] = useState<Vocabulary[]>([]);
   const [selectedLevel, setSelectedLevel] = useState("Tất cả");
-  const [selectedType, setSelectedType] = useState("Tất cả");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState("");
   const router = useRouter();
 
-  // Kiểm tra đăng nhập
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) router.push("/login");
+      else setUserEmail(user.email || "");
     });
     return () => unsubscribe();
   }, [router]);
 
-  // Lấy dữ liệu từ Firebase
   useEffect(() => {
-    const fetchWords = async () => {
+    const fetch = async () => {
       try {
-        const q = query(
-          collection(db, "vocabulary"),
-          orderBy("level")
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Vocabulary[];
-        setWords(data);
-        setFiltered(data);
-      } catch (error) {
-        console.error("Lỗi lấy dữ liệu:", error);
-      } finally {
-        setLoading(false);
-      }
+        const q = query(collection(db, "vocabulary"), orderBy("level"));
+        const snap = await getDocs(q);
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
+        setWords(data); setFiltered(data);
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
     };
-    fetchWords();
+    fetch();
   }, []);
 
-  // Lọc từ vựng khi thay đổi bộ lọc
   useEffect(() => {
-    let result = words;
-
-    if (selectedLevel !== "Tất cả") {
-      result = result.filter((w) => w.level === selectedLevel);
-    }
-    if (selectedType !== "Tất cả") {
-      result = result.filter((w) => w.type === selectedType);
-    }
+    let res = words;
+    if (selectedLevel !== "Tất cả") res = res.filter((w) => w.level === selectedLevel);
     if (search) {
-      result = result.filter(
-        (w) =>
-          w.word.includes(search) ||
-          w.reading.includes(search) ||
-          w.meaning.toLowerCase().includes(search.toLowerCase())
+      const q = search.toLowerCase();
+      res = res.filter((w) =>
+        w.word.includes(search) || w.reading.includes(search) ||
+        w.meaning.toLowerCase().includes(q)
       );
     }
-
-    setFiltered(result);
-  }, [selectedLevel, selectedType, search, words]);
+    setFiltered(res);
+  }, [selectedLevel, search, words]);
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="min-h-[100dvh] bg-page">
+      <Navbar userEmail={userEmail} showBackToDashboard />
 
-      {/* Thanh menu */}
-      <nav className="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="text-2xl">🎌</span>
-          <span className="text-xl font-bold text-red-600">Nihongo Master</span>
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-gray-500 hover:text-gray-700 text-sm"
-        >
-          ← Về Dashboard
-        </Link>
-      </nav>
+      <div className="max-w-6xl mx-auto px-4 py-6">
 
-      <div className="max-w-6xl mx-auto px-8 py-8">
-
-        {/* Tiêu đề */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">📚 Từ vựng</h1>
-          <p className="text-gray-500 mt-1">
-            {filtered.length} từ vựng
-            {selectedLevel !== "Tất cả" ? ` cấp độ ${selectedLevel}` : " tất cả cấp độ"}
+        {/* Header */}
+        <div className="mb-6 animate-fade-up">
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>Từ vựng</h1>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {filtered.length} từ {selectedLevel !== "Tất cả" ? `cấp ${selectedLevel}` : "tất cả cấp"}
           </p>
         </div>
 
-        {/* Bộ lọc */}
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6 flex flex-wrap gap-4">
-
-          {/* Tìm kiếm */}
+        {/* Filters */}
+        <div className="card p-4 mb-5 flex flex-wrap gap-3 items-center animate-fade-up">
           <input
             type="text"
             placeholder="🔍 Tìm từ vựng..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-48 px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="input flex-1 min-w-48"
           />
-
-          {/* Lọc theo cấp độ */}
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
             {["Tất cả", "N5", "N4", "N3", "N2", "N1"].map((level) => (
               <button
                 key={level}
                 onClick={() => setSelectedLevel(level)}
-                className={`px-4 py-2 rounded-xl font-medium transition text-sm ${
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 ease-spring"
+                style={
                   selectedLevel === level
-                    ? "bg-red-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
+                    ? { background: "var(--primary)", color: "#0d1f14" }
+                    : { background: "var(--surface-2)", color: "var(--text-muted)", border: "1px solid var(--border-color)" }
+                }
               >
                 {level}
               </button>
             ))}
           </div>
-
-          {/* Lọc theo loại từ */}
-          <select
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-          >
-            {["Tất cả", "động từ", "tính từ", "danh từ", "đại từ"].map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-
         </div>
 
-        {/* Danh sách từ vựng */}
+        {/* Word grid */}
         {loading ? (
-          <div className="text-center py-20 text-gray-400">
-            <div className="text-4xl mb-4">⏳</div>
-            <p>Đang tải từ vựng...</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <div className="text-4xl mb-4">🔍</div>
-            <p>Không tìm thấy từ vựng nào</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((word) => (
-              <div
-                key={word.id}
-                className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition"
-              >
-                {/* Hàng trên: từ + badge cấp độ */}
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <div className="text-3xl font-bold text-gray-900">
-                      {word.word}
-                    </div>
-                    <div className="text-red-500 font-medium mt-1">
-                      {word.reading}
-                    </div>
-                  </div>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-lg ${levelColors[word.level] || "bg-gray-100 text-gray-600"}`}>
-                    {word.level}
-                  </span>
-                </div>
-
-                {/* Nghĩa */}
-                <div className="text-gray-700 font-medium mb-3">
-                  {word.meaning}
-                </div>
-
-                {/* Loại từ */}
-                <div className="text-xs text-gray-400 mb-3">
-                  [{word.type}]
-                </div>
-
-                {/* Câu ví dụ */}
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <div className="text-sm text-gray-700">{word.example}</div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {word.exampleMeaning}
-                  </div>
-                </div>
-
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="skeleton h-40 rounded-2xl" />
             ))}
           </div>
-        )}
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">🔍</div>
+            <p style={{ color: "var(--text-muted)" }}>Không tìm thấy từ vựng nào</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((word, i) => {
+              const lvl = levelColors[word.level] || { bg: "var(--surface-2)", color: "var(--text-muted)" };
+              return (
+                <div
+                  key={word.id}
+                  className="card p-5 animate-fade-up"
+                  style={{ animationDelay: `${Math.min(i, 20) * 30}ms` }}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div className="font-jp text-2xl font-bold" style={{ color: "var(--text)" }}>
+                        {word.word}
+                      </div>
+                      <div className="text-sm mt-0.5" style={{ color: "var(--primary)" }}>
+                        {word.reading}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5">
+                      <span className="badge" style={{ background: lvl.bg, color: lvl.color }}>
+                        {word.level}
+                      </span>
+                      <button
+                        onClick={() => speakJapanese(word.word)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                        title="Phát âm"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
 
+                  <div className="font-medium text-sm mb-3" style={{ color: "var(--text)" }}>
+                    {word.meaning}
+                  </div>
+                  <div className="text-xs mb-2" style={{ color: "var(--text-faint)" }}>
+                    [{word.type}]
+                  </div>
+
+                  {word.example && (
+                    <div className="rounded-xl p-3 text-sm" style={{ background: "var(--surface-2)" }}>
+                      <div style={{ color: "var(--text-muted)" }}>{word.example}</div>
+                      {word.exampleMeaning && (
+                        <div className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
+                          {word.exampleMeaning}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </main>
+    </div>
   );
 }
