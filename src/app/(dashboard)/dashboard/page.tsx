@@ -30,7 +30,6 @@ const navTiles = [
   { icon: "📚", label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary", active: true  },
   { icon: "📖", label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary", active: true  },
   { icon: "📈", label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",   active: true  },
-  { icon: "✍️", label: "Trắc nghiệm",  sub: "Sắp có",                href: "#",           active: false },
 ];
 
 export default function DashboardPage() {

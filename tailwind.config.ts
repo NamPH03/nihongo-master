@@ -33,7 +33,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans:  ["Outfit", "Noto Sans JP", "sans-serif"],
+        sans:  ["Averta", "Arial", "Noto Sans JP", "sans-serif"],
         jp:    ["Noto Sans JP", "sans-serif"],
         mono:  ["JetBrains Mono", "monospace"],
       },
