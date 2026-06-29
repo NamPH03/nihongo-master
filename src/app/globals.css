@@ -25,3 +25,10 @@ body {
     text-wrap: balance;
   }
 }
+input::placeholder {
+  color: #9ca3af;
+}
+
+input {
+  color: #111827 !important;
+}

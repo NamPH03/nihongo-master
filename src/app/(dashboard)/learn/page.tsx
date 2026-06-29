@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  collection, getDocs, query, where, limit,
-} from "firebase/firestore";
+import { collection, getDocs, query, limit } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { getLearnedWordIds, markNewWordLearned, upsertUserWord } from "@/lib/progress";
+import {
+  getLearnedWordIds,
+  getNewSavedWordIds,
+  markNewWordLearned,
+  updateProgress,
+} from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
@@ -63,6 +66,7 @@ export default function LearnPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // Kiểm tra đăng nhập
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) router.push("/login");
@@ -70,37 +74,46 @@ export default function LearnPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // Lấy từ cần học + toàn bộ từ để tạo đáp án sai
+  // Lấy từ cần học
   useEffect(() => {
     const fetchWords = async () => {
       try {
         const user = auth.currentUser;
         if (!user) return;
 
-        const learnedWordIds = await getLearnedWordIds(user.uid);
-
-        // 10 từ mới để học
-        const newQ = query(
-          collection(db, "vocabulary"),
-          where("status", "==", "new"),
-          limit(10)
+        // Lấy toàn bộ vocabulary (300 từ đầu)
+        const allVocabSnap = await getDocs(
+          query(collection(db, "vocabulary"), limit(300))
         );
-        const newSnap = await getDocs(newQ);
-        const newWords = newSnap.docs
-          .filter((d) => !learnedWordIds.has(d.id))
-          .map((d) => ({
-            id: d.id, ...d.data(),
-          })) as Vocabulary[];
-
-        // Lấy thêm từ để tạo đáp án sai
-        const allQ = query(collection(db, "vocabulary"), limit(100));
-        const allSnap = await getDocs(allQ);
-        const all = allSnap.docs.map((d) => ({
+        const allVocab = allVocabSnap.docs.map((d) => ({
           id: d.id, ...d.data(),
         })) as Vocabulary[];
 
-        setWords(newWords);
-        setAllWords(all);
+        // Lấy IDs đã có trong progress (đã học hoặc đã lưu)
+        const learnedIds = await getLearnedWordIds(user.uid);
+
+        // Lấy IDs đã lưu từ dictionary (status: "new" → chưa học)
+        const savedNewIds = await getNewSavedWordIds(user.uid);
+
+        console.log("✅ Learned:", learnedIds.size);
+        console.log("📌 Saved from dict:", savedNewIds.size);
+
+        // Ưu tiên 1: Từ đã lưu từ dictionary (status: new)
+        const savedWords = allVocab
+          .filter((w) => savedNewIds.has(w.id))
+          .slice(0, 10);
+
+        // Ưu tiên 2: Từ chưa từng có trong progress
+        const brandNewWords = allVocab
+          .filter((w) => !learnedIds.has(w.id) && !savedNewIds.has(w.id))
+          .slice(0, Math.max(0, 10 - savedWords.length));
+
+        const wordsToLearn = [...savedWords, ...brandNewWords].slice(0, 10);
+
+        console.log("📚 Words to learn:", wordsToLearn.map((w) => w.word));
+
+        setWords(wordsToLearn);
+        setAllWords(allVocab);
       } catch (err) {
         console.error(err);
       } finally {
@@ -109,6 +122,14 @@ export default function LearnPage() {
     };
     fetchWords();
   }, []);
+
+  // Tự phát âm từ đầu tiên khi load xong
+  useEffect(() => {
+    if (words.length > 0) {
+      setTimeout(() => speakJapanese(words[0].word, false), 500);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [words]);
 
   const currentWord = words[currentIndex];
 
@@ -127,25 +148,18 @@ export default function LearnPage() {
   const getNextStep = (current: Step, word: Vocabulary): Step | "done" => {
     if (current === "flashcard") return "meaning-to-word";
     if (current === "meaning-to-word") return "listening";
-    if (current === "listening") {
-      return hasKanji(word.word) ? "kanji" : "done";
-    }
+    if (current === "listening") return hasKanji(word.word) ? "kanji" : "done";
     if (current === "kanji") return "done";
     return "done";
   };
 
-  // Chuyển sang từ tiếp theo hoặc kết thúc
+  // Hoàn thành 1 từ → lưu progress
   const goNextWord = async () => {
     const user = auth.currentUser;
     if (user && currentWord) {
-      await upsertUserWord(user.uid, {
-        wordId: currentWord.id,
-        word: currentWord.word,
-        reading: currentWord.reading,
-        meaning: currentWord.meaning,
-        srLevel: 1,
-      });
+      // Lưu vào users/{uid}/progress/{wordId} với srLevel: 1
       await markNewWordLearned(user.uid, currentWord.id);
+      await updateProgress(user.uid, 1);
     }
 
     setLearnedCount((p) => p + 1);
@@ -159,17 +173,10 @@ export default function LearnPage() {
       setIsFlipped(false);
       setSelectedAnswer(null);
       setAnswerStatus("idle");
-
-      // Tự phát âm từ mới
       setTimeout(() => speakJapanese(words[nextIdx].word, false), 300);
     }
   };
-  // Tự phát âm từ đầu tiên khi load xong
-  useEffect(() => {
-    if (words.length > 0) {
-      setTimeout(() => speakJapanese(words[0].word, false), 500);
-    }
-  }, [words]);
+
   // Chuyển bước
   const nextStep = async () => {
     const next = getNextStep(currentStep, currentWord);
@@ -179,9 +186,9 @@ export default function LearnPage() {
       setCurrentStep(next);
       prepareChoices(next, currentWord);
       setIsFlipped(false);
-    }
-    if (next === "listening") {
-      setTimeout(() => speakJapanese(currentWord.word, false), 300);
+      if (next === "listening") {
+        setTimeout(() => speakJapanese(currentWord.word, false), 300);
+      }
     }
   };
 
@@ -205,12 +212,12 @@ export default function LearnPage() {
     if (answerStatus === "idle") {
       return "border-2 border-gray-200 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50";
     }
-    if (choice === correct) return "border-2 border-green-400 bg-green-50 text-green-700 font-bold";
-    if (choice === selectedAnswer) return "border-2 border-red-400 bg-red-50 text-red-600";
-    return "border-2 border-gray-200 bg-white text-gray-400";
+    if (choice === correct) return "border-2 border-green-500 bg-green-500 text-white font-bold";
+    if (choice === selectedAnswer) return "border-2 border-red-500 bg-red-500 text-white font-bold";
+    return "border-2 border-gray-200 bg-white text-gray-300";
   };
 
-  // Các bước hiển thị indicator
+  // Step indicators
   const stepList = (word: Vocabulary): Step[] => {
     const steps: Step[] = ["flashcard", "meaning-to-word", "listening"];
     if (word && hasKanji(word.word)) steps.push("kanji");
@@ -218,13 +225,14 @@ export default function LearnPage() {
   };
 
   const stepLabel: Record<Step, string> = {
-    "flashcard": "Thẻ",
+    flashcard: "Thẻ",
     "meaning-to-word": "Chọn từ",
-    "listening": "Nghe",
-    "kanji": "Kanji",
-    "result": "",
+    listening: "Nghe",
+    kanji: "Kanji",
+    result: "",
   };
 
+  // ===== LOADING =====
   if (loading) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="text-center">
@@ -234,6 +242,7 @@ export default function LearnPage() {
     </div>
   );
 
+  // ===== HỌC HẾT TỪ =====
   if (words.length === 0) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="text-center bg-white rounded-3xl p-12 shadow-sm max-w-md">
@@ -262,7 +271,7 @@ export default function LearnPage() {
 
       <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Thanh tiến độ */}
+        {/* Thanh tiến độ + Step indicators */}
         <div className="mb-5">
           <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
             <div
@@ -271,7 +280,6 @@ export default function LearnPage() {
             />
           </div>
 
-          {/* Step indicators */}
           {currentStep !== "result" && currentWord && (
             <div className="flex justify-center items-center gap-2">
               {stepList(currentWord).map((step, i) => (
@@ -311,18 +319,15 @@ export default function LearnPage() {
                 height: "320px",
               }}>
 
-                {/* ===== MẶT TRƯỚC ===== */}
+                {/* MẶT TRƯỚC */}
                 <div
                   className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
                   style={{ backfaceVisibility: "hidden" }}
                 >
-                  {/* Nút âm thanh góc trên trái */}
                   <div className="flex gap-2 p-4">
                     <SpeakButton text={currentWord.word} size="sm" />
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
-
-                  {/* Nội dung giữa */}
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
                     <div className="text-xs text-gray-300 mb-4 uppercase tracking-wide">
                       Bấm để xem nghĩa
@@ -338,18 +343,15 @@ export default function LearnPage() {
                   </div>
                 </div>
 
-                {/* ===== MẶT SAU ===== */}
+                {/* MẶT SAU */}
                 <div
                   className="bg-white rounded-3xl shadow-sm absolute inset-0 flex flex-col"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                 >
-                  {/* Nút âm thanh góc trên trái */}
                   <div className="flex gap-2 p-4">
                     <SpeakButton text={currentWord.word} size="sm" />
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
-
-                  {/* Nội dung giữa */}
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
                     <div className="text-4xl font-bold text-gray-900 mb-3">
                       {currentWord.meaning}
@@ -407,9 +409,15 @@ export default function LearnPage() {
             </div>
 
             {answerStatus !== "idle" && (
-              <button onClick={nextStep}
-                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
-                Tiếp tục →
+              <button
+                onClick={nextStep}
+                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+                  answerStatus === "correct"
+                    ? "bg-green-500 hover:bg-green-600"
+                    : "bg-red-500 hover:bg-red-600"
+                }`}
+              >
+                {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
               </button>
             )}
           </div>
@@ -423,10 +431,9 @@ export default function LearnPage() {
                 Nghe và chọn nghĩa đúng
               </div>
               <div className="flex justify-center gap-4">
-                <SpeakButton text={currentWord?.word} size="lg" />
-                <SpeakButton text={currentWord?.word} slow size="lg" />
+                <SpeakButton text={currentWord.word} size="lg" />
+                <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
-              {/* Hiện từ nhỏ bên dưới nút nghe */}
               <div className="text-gray-400 text-sm mt-3">
                 {currentWord.word} · {currentWord.reading}
               </div>
@@ -448,9 +455,15 @@ export default function LearnPage() {
             </div>
 
             {answerStatus !== "idle" && (
-              <button onClick={nextStep}
-                className="w-full mt-5 py-4 bg-red-600 text-white font-semibold rounded-2xl hover:bg-red-700 transition">
-                Tiếp tục →
+              <button
+                onClick={nextStep}
+                className={`w-full mt-5 py-4 font-semibold rounded-2xl transition text-white ${
+                  answerStatus === "correct"
+                    ? "bg-green-500 hover:bg-green-600"
+                    : "bg-red-500 hover:bg-red-600"
+                }`}
+              >
+                {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
               </button>
             )}
           </div>
@@ -463,7 +476,6 @@ export default function LearnPage() {
               Ghi nhớ cách viết Kanji
             </div>
 
-            {/* Mỗi chữ Hán 1 ô vuông */}
             <div className="flex justify-center gap-4 mb-6 flex-wrap">
               {currentWord.word
                 .split("")
@@ -473,21 +485,21 @@ export default function LearnPage() {
                     key={i}
                     className="w-32 h-32 border-2 border-slate-400 rounded-2xl flex items-center justify-center bg-white shadow-md"
                   >
-                    <span className="text-6xl font-black text-slate-950 tracking-wide drop-shadow-sm">
+                    <span className="text-6xl font-black text-slate-950">
                       {kanji}
                     </span>
                   </div>
                 ))}
             </div>
 
-            <div className="bg-white border border-slate-300 rounded-2xl p-4 text-left mb-6 shadow-sm">
+            <div className="bg-gray-50 rounded-2xl p-4 text-left mb-6">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-red-600 font-semibold">{currentWord.reading}</span>
-                <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg">
+                <span className="text-red-500 font-medium">{currentWord.reading}</span>
+                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-lg">
                   {currentWord.type}
                 </span>
               </div>
-              <div className="text-slate-900 font-semibold">{currentWord.meaning}</div>
+              <div className="text-gray-800 font-semibold">{currentWord.meaning}</div>
             </div>
 
             <button
@@ -511,17 +523,23 @@ export default function LearnPage() {
               <span className="font-bold text-red-600">{learnedCount} từ mới</span>
             </p>
             <div className="flex flex-col gap-3">
-              <Link href="/learn"
+              <Link
+                href="/learn"
                 onClick={() => window.location.reload()}
-                className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition">
+                className="py-3 bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700 transition"
+              >
                 🚀 Học tiếp 10 từ nữa
               </Link>
-              <Link href="/progress"
-                className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition">
+              <Link
+                href="/progress"
+                className="py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition"
+              >
                 📈 Xem tiến độ
               </Link>
-              <Link href="/dashboard"
-                className="py-3 text-gray-400 hover:text-gray-600 transition">
+              <Link
+                href="/dashboard"
+                className="py-3 text-gray-400 hover:text-gray-600 transition"
+              >
                 Về Dashboard
               </Link>
             </div>

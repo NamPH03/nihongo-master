@@ -2,102 +2,171 @@
 import { db } from "@/lib/firebase";
 import {
   doc, getDoc, setDoc, updateDoc,
-  collection, getDocs, query, where, addDoc
+  collection, getDocs
 } from "firebase/firestore";
 
-// ===== SPACED REPETITION =====
-// Thời gian ôn tập theo từng mức (milliseconds)
+// ===== SPACED REPETITION INTERVALS =====
 export const SR_INTERVALS: Record<number, number> = {
-  1: 1 * 60 * 60 * 1000,          // Mức 1 → 1 tiếng
-  2: 24 * 60 * 60 * 1000,          // Mức 2 → 1 ngày
-  3: 3 * 24 * 60 * 60 * 1000,      // Mức 3 → 3 ngày
-  4: 7 * 24 * 60 * 60 * 1000,      // Mức 4 → 1 tuần
-  5: 60 * 24 * 60 * 60 * 1000,     // Mức 5 → 2 tháng
+  1: 1 * 60 * 60 * 1000,           // Mức 1 → 1 tiếng
+  2: 24 * 60 * 60 * 1000,           // Mức 2 → 1 ngày
+  3: 3 * 24 * 60 * 60 * 1000,       // Mức 3 → 3 ngày
+  4: 7 * 24 * 60 * 60 * 1000,       // Mức 4 → 1 tuần
+  5: 60 * 24 * 60 * 60 * 1000,      // Mức 5 → 2 tháng
 };
 
-// Nâng mức sau khi ôn thành công
-export async function promoteWord(userId: string, wordId: string, currentLevel: number) {
-  const newLevel = Math.min(currentLevel + 1, 5);
-  const nextReview = new Date(Date.now() + SR_INTERVALS[newLevel]);
-  await setDoc(doc(db, "users", userId, "progress", wordId), {
-    srLevel: newLevel,
-    nextReview: nextReview.toISOString(),
-    status: "learned",
+// ===== TYPES =====
+export type WordProgress = {
+  wordId: string;
+  srLevel: number;
+  nextReview: string | null;
+  status: "new" | "learned";
+  lastReviewed: string | null;
+};
+
+export type DueWordProgress = WordProgress & {
+  id: string;
+};
+
+export type ProgressData = {
+  streak: number;
+  lastStudyDate: string;
+  totalLearned: number;
+  dailyHistory: Record<string, number>;
+};
+
+// ===== PATH HELPERS =====
+// Tất cả đều dùng 1 collection duy nhất: users/{uid}/progress/{wordId}
+function wordProgressRef(userId: string, wordId: string) {
+  return doc(db, "users", userId, "progress", wordId);
+}
+
+function userProgressCollection(userId: string) {
+  return collection(db, "users", userId, "progress");
+}
+
+function userStatsRef(userId: string) {
+  return doc(db, "users", userId, "progress", "stats");
+}
+
+// ===== WORD PROGRESS =====
+
+// Lưu từ mới từ từ điển vào lịch học (status: "new")
+export async function saveWordToSchedule(
+  userId: string,
+  wordId: string
+): Promise<void> {
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
+    srLevel: 0,
+    nextReview: null,
+    status: "new",
+    lastReviewed: null,
   }, { merge: true });
-  await updateUserWordLevel(userId, wordId, newLevel);
+}
+
+// Đánh dấu từ đã học xong lần đầu → mức 1
+export async function markNewWordLearned(
+  userId: string,
+  wordId: string
+): Promise<void> {
+  const nextReview = new Date(Date.now() + SR_INTERVALS[1]).toISOString();
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
+    srLevel: 1,
+    nextReview,
+    status: "learned",
+    lastReviewed: new Date().toISOString(),
+  });
+}
+
+// Nâng mức sau khi ôn thành công
+export async function promoteWord(
+  userId: string,
+  wordId: string,
+  currentLevel: number
+): Promise<void> {
+  const newLevel = Math.min(currentLevel + 1, 5);
+  const nextReview = new Date(Date.now() + SR_INTERVALS[newLevel]).toISOString();
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
+    srLevel: newLevel,
+    nextReview,
+    status: "learned",
+    lastReviewed: new Date().toISOString(),
+  }, { merge: true });
 }
 
 // Giảm mức khi quên
-export async function demoteWord(userId: string, wordId: string, currentLevel: number) {
+export async function demoteWord(
+  userId: string,
+  wordId: string,
+  currentLevel: number
+): Promise<void> {
   const newLevel = Math.max(currentLevel - 1, 1);
-  const nextReview = new Date(Date.now() + SR_INTERVALS[newLevel]);
-  await setDoc(doc(db, "users", userId, "progress", wordId), {
+  const nextReview = new Date(Date.now() + SR_INTERVALS[newLevel]).toISOString();
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
     srLevel: newLevel,
-    nextReview: nextReview.toISOString(),
-  }, { merge: true });
-  await updateUserWordLevel(userId, wordId, newLevel);
-}
-
-// Đánh dấu từ mới học xong lần đầu → mức 1
-export async function markNewWordLearned(userId: string, wordId: string) {
-  const nextReview = new Date(Date.now() + SR_INTERVALS[1]);
-  await setDoc(doc(db, "users", userId, "progress", wordId), {
-    srLevel: 1,
-    nextReview: nextReview.toISOString(),
+    nextReview,
     status: "learned",
+    lastReviewed: new Date().toISOString(),
   }, { merge: true });
-  await updateUserWordLevel(userId, wordId, 1);
 }
 
+// ===== QUERIES =====
+
+// Lấy tất cả wordId đã có trong progress (trừ "stats")
 export async function getLearnedWordIds(userId: string): Promise<Set<string>> {
-  const snap = await getDocs(query(collection(db, "users", userId, "progress")));
-  return new Set(snap.docs.filter((d) => d.id !== "stats").map((d) => d.id));
+  const snap = await getDocs(userProgressCollection(userId));
+  return new Set(
+    snap.docs
+      .filter((d) => d.id !== "stats")
+      .map((d) => d.id)
+  );
+}
+
+// Lấy wordId có status "new" (lưu từ dictionary chưa học)
+export async function getNewSavedWordIds(userId: string): Promise<Set<string>> {
+  const snap = await getDocs(userProgressCollection(userId));
+  return new Set(
+    snap.docs
+      .filter((d) => d.id !== "stats" && d.data().status === "new")
+      .map((d) => d.id)
+  );
 }
 
 // Lấy số từ ở mỗi mức SR
-export async function getSRStats(userId: string): Promise<Record<number, number>> {
+export async function getSRStats(
+  userId: string
+): Promise<Record<number, number>> {
   const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  const snap = await getDocs(query(collection(db, "users", userId, "progress")));
+  const snap = await getDocs(userProgressCollection(userId));
   snap.forEach((d) => {
     if (d.id === "stats") return;
-    const level = Number(d.data().srLevel || 1);
+    const level = Number(d.data().srLevel || 0);
     if (level >= 1 && level <= 5) stats[level]++;
   });
   return stats;
 }
 
-export type DueWordProgress = {
-  id: string;
-  srLevel?: number;
-  nextReview?: string;
-  [key: string]: unknown;
-};
-
-export type UserWordStatus = {
-  id: string;
-  word: string;
-  reading: string;
-  meaning: string;
-  srLevel: number;
-  status: "learning" | "mastered";
-};
-
 // Lấy từ đến hạn ôn tập
-export async function getDueWords(userId: string, limitCount = 20): Promise<DueWordProgress[]> {
+export async function getDueWords(
+  userId: string,
+  limitCount = 20
+): Promise<DueWordProgress[]> {
   const now = new Date().toISOString();
-  const snap = await getDocs(
-    query(collection(db, "users", userId, "progress"))
-  );
-  const due = snap.docs
-    .filter((d) => d.id !== "stats")
+  const snap = await getDocs(userProgressCollection(userId));
+
+  return snap.docs
     .filter((d) => {
+      if (d.id === "stats") return false;
       const data = d.data();
+      if (data.status !== "learned") return false;
       const nextReview = data.nextReview;
       return !nextReview || nextReview <= now;
     })
     .map((d) => ({ id: d.id, ...d.data() } as DueWordProgress))
     .slice(0, limitCount);
-  return due;
 }
 
 // ===== PROGRESS & STREAK =====
@@ -111,84 +180,15 @@ function getYesterdayString(): string {
   return y.toISOString().split("T")[0];
 }
 
-export type ProgressData = {
-  streak: number;
-  lastStudyDate: string;
-  totalLearned: number;
-  dailyHistory: Record<string, number>;
-};
-
-export async function upsertUserWord(
-  userId: string,
-  payload: {
-    wordId: string;
-    word: string;
-    reading: string;
-    meaning: string;
-    srLevel?: number;
-    status?: "learning" | "mastered";
-  }
-) {
-  const existing = await getDocs(
-    query(collection(db, "userWords"), where("userId", "==", userId), where("wordId", "==", payload.wordId))
-  );
-
-  const srLevel = payload.srLevel ?? 1;
-  const status = payload.status ?? (srLevel >= 3 ? "mastered" : "learning");
-  const data = {
-    userId,
-    wordId: payload.wordId,
-    word: payload.word,
-    reading: payload.reading,
-    meaning: payload.meaning,
-    srLevel,
-    status,
-    notes: "",
-    createdAt: new Date().toISOString(),
-    reviewCount: 0,
-  };
-
-  if (!existing.empty) {
-    await updateDoc(existing.docs[0].ref, data);
-    return existing.docs[0].id;
-  }
-
-  const ref = await addDoc(collection(db, "userWords"), data);
-  return ref.id;
-}
-
-export async function updateUserWordLevel(userId: string, wordId: string, srLevel: number) {
-  const existing = await getDocs(
-    query(collection(db, "userWords"), where("userId", "==", userId), where("wordId", "==", wordId))
-  );
-
-  if (!existing.empty) {
-    await updateDoc(existing.docs[0].ref, {
-      srLevel,
-      status: srLevel >= 3 ? "mastered" : "learning",
-    });
-  }
-}
-
-export async function getUserWordStatuses(userId: string): Promise<UserWordStatus[]> {
-  const snap = await getDocs(query(collection(db, "userWords"), where("userId", "==", userId)));
-  return snap.docs.map((d) => ({
-    id: d.id,
-    word: d.data().word || "",
-    reading: d.data().reading || "",
-    meaning: d.data().meaning || "",
-    srLevel: Number(d.data().srLevel ?? 1),
-    status: d.data().status === "mastered" ? "mastered" : "learning",
-  }));
-}
-
 export async function getProgress(userId: string): Promise<ProgressData> {
-  const ref = doc(db, "users", userId, "progress", "stats");
+  const ref = userStatsRef(userId);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
     const d: ProgressData = {
-      streak: 0, lastStudyDate: "",
-      totalLearned: 0, dailyHistory: {},
+      streak: 0,
+      lastStudyDate: "",
+      totalLearned: 0,
+      dailyHistory: {},
     };
     await setDoc(ref, d);
     return d;
@@ -200,7 +200,7 @@ export async function updateProgress(
   userId: string,
   wordsLearned: number
 ): Promise<ProgressData> {
-  const ref = doc(db, "users", userId, "progress", "stats");
+  const ref = userStatsRef(userId);
   const current = await getProgress(userId);
   const today = getTodayString();
   const yesterday = getYesterdayString();
@@ -210,17 +210,74 @@ export async function updateProgress(
     newStreak = current.streak;
   } else if (current.lastStudyDate === yesterday) {
     newStreak = current.streak + 1;
-  } else {
+  } else if (wordsLearned > 0) {
     newStreak = 1;
   }
 
   const todayCount = (current.dailyHistory[today] || 0) + wordsLearned;
   const updated: ProgressData = {
     streak: newStreak,
-    lastStudyDate: today,
+    lastStudyDate: wordsLearned > 0 ? today : current.lastStudyDate,
     totalLearned: current.totalLearned + wordsLearned,
     dailyHistory: { ...current.dailyHistory, [today]: todayCount },
   };
+
   await updateDoc(ref, updated);
   return updated;
 }
+
+// ===== USER WORD STATUS FOR DASHBOARD =====
+export type UserWordStatus = {
+  id: string;
+  word: string;
+  reading: string;
+  meaning: string;
+  srLevel: number;
+  status: "learning" | "mastered";
+};
+
+// Lấy danh sách trạng thái từ vựng đã học của user kèm chi tiết từ vựng
+export async function getUserWordStatuses(
+  userId: string
+): Promise<UserWordStatus[]> {
+  const progressSnap = await getDocs(userProgressCollection(userId));
+  const progressData = progressSnap.docs
+    .filter((d) => d.id !== "stats")
+    .map((d) => {
+      const data = d.data();
+      return {
+        wordId: data.wordId || d.id,
+        srLevel: data.srLevel || 0,
+        nextReview: data.nextReview || null,
+        status: data.status || "new",
+        lastReviewed: data.lastReviewed || null,
+      } as WordProgress;
+    });
+
+  if (progressData.length === 0) return [];
+
+  // Lấy toàn bộ từ vựng để map thông tin (word, reading, meaning)
+  const vocabSnap = await getDocs(collection(db, "vocabulary"));
+  const vocabMap = new Map<string, { word?: string; reading?: string; meaning?: string }>();
+  vocabSnap.forEach((doc) => {
+    vocabMap.set(doc.id, doc.data());
+  });
+
+  const result: UserWordStatus[] = [];
+  for (const prog of progressData) {
+    const wordId = prog.wordId;
+    const vocab = vocabMap.get(wordId);
+    if (vocab) {
+      result.push({
+        id: wordId,
+        word: vocab.word || "",
+        reading: vocab.reading || "",
+        meaning: vocab.meaning || "",
+        srLevel: prog.srLevel || 0,
+        status: prog.srLevel >= 3 ? "mastered" : "learning",
+      });
+    }
+  }
+
+  return result;
+}

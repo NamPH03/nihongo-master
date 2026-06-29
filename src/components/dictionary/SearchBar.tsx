@@ -20,7 +20,7 @@ export default function SearchBar({ query, onChange, onClear, loading, placehold
         value={query}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || "Nhập từ tiếng Nhật, hiragana hoặc nghĩa..."}
-        className="w-full pl-12 pr-12 py-4 bg-white border-2 border-gray-200 rounded-2xl text-lg focus:outline-none focus:border-red-400 transition"
+        className="w-full pl-12 pr-12 py-4 bg-white border-2 border-gray-200 rounded-2xl text-gray-900 text-lg focus:outline-none focus:border-red-400 transition"
       />
 
       {/* Loading spinner */}

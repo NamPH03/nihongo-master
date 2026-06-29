@@ -41,7 +41,7 @@ export default function SpeakButton({ text, slow = false, size = "md" }: Props) 
       className={`${sizeClass} rounded-full flex items-center justify-center transition ${
         speaking
           ? "bg-red-100 text-red-500 scale-110"
-          : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+          : "bg-gray-100 hover:bg-gray-300 text-gray-700"
       }`}
       title={slow ? "Phát âm chậm" : "Phát âm"}
     >
