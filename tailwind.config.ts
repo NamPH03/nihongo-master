@@ -33,8 +33,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans:  ["Averta", "Arial", "Noto Sans JP", "sans-serif"],
-        jp:    ["Noto Sans JP", "sans-serif"],
+        sans:  ["Quicksand", "M PLUS Rounded 1c", "sans-serif"],
+        jp:    ["M PLUS Rounded 1c", "sans-serif"],
         mono:  ["JetBrains Mono", "monospace"],
       },
       boxShadow: {

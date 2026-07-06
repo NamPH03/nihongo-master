@@ -65,14 +65,20 @@ export default function LearnPage() {
       try {
         const user = auth.currentUser;
         if (!user) return;
-        const allVocabSnap = await getDocs(query(collection(db, "vocabulary"), limit(300)));
+        const allVocabSnap = await getDocs(query(collection(db, "vocabulary"), limit(500)));
         const allVocab = allVocabSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
         const learnedIds = await getLearnedWordIds(user.uid);
         const savedNewIds = await getNewSavedWordIds(user.uid);
-        const savedWords = allVocab.filter((w) => savedNewIds.has(w.id)).slice(0, 10);
+
+        // Lấy tất cả từ được lưu từ từ điển nhưng chưa học
+        const savedWords = allVocab.filter((w) => savedNewIds.has(w.id));
+        
+        // Lấy các từ còn lại trong DB mà user chưa học và chưa lưu
         const brandNewWords = allVocab
           .filter((w) => !learnedIds.has(w.id) && !savedNewIds.has(w.id))
-          .slice(0, Math.max(0, 10 - savedWords.length));
+          .sort(() => Math.random() - 0.5); // Xáo trộn ngẫu nhiên toàn bộ từ mới
+
+        // Ưu tiên từ lưu từ từ điển trước, sau đó lấy thêm từ ngẫu nhiên cho đủ 10 từ
         const wordsToLearn = [...savedWords, ...brandNewWords].slice(0, 10);
         setWords(wordsToLearn);
         setAllWords(allVocab);

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 
@@ -50,7 +51,7 @@ export default function RegisterPage() {
 
         <div className="text-center mb-7">
           <Link href="/" className="inline-flex items-center gap-2 mb-5">
-            <span className="text-2xl">🌿</span>
+            <Image src="/icon-192.png" alt="Logo" width={32} height={32} className="rounded-full object-cover" />
             <span className="font-bold text-lg" style={{ color: "var(--primary)" }}>
               Nihongo Master
             </span>

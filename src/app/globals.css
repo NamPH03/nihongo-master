@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=M+PLUS+Rounded+1c:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -75,7 +75,7 @@ html {
 }
 
 body {
-  font-family: 'Averta-Regular', 'Arial', 'Noto Sans JP', sans-serif;
+  font-family: 'Quicksand', 'M PLUS Rounded 1c', sans-serif;
   background-color: var(--bg);
   color: var(--text);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -155,7 +155,7 @@ input::placeholder, textarea::placeholder {
     transition: all 0.2s cubic-bezier(0.32,0.72,0,1);
     cursor: pointer;
     border: none;
-    font-family: 'Averta-Regular', 'Arial', sans-serif;
+    font-family: 'Quicksand', sans-serif;
     letter-spacing: -0.01em;
   }
   .btn:active { transform: scale(0.97) translateY(1px); }
@@ -204,7 +204,7 @@ input::placeholder, textarea::placeholder {
     font-size: 0.9375rem;
     color: var(--text);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    font-family: 'Averta-Regular', 'Arial', sans-serif;
+    font-family: 'Quicksand', sans-serif;
   }
   .input:focus {
     outline: none;

@@ -1,24 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { 
+  Sparkles, 
+  Repeat, 
+  BookOpen, 
+  Search, 
+  BarChart2, 
+  ArrowLeft, 
+  LogOut
+} from "lucide-react";
 
 interface NavbarProps {
   userEmail?: string;
   showBackToDashboard?: boolean;
 }
-
-const navLinks = [
-  { href: "/learn",      label: "Học mới",    icon: "🎯" },
-  { href: "/review",     label: "Ôn tập",     icon: "🔁" },
-  { href: "/vocabulary", label: "Từ vựng",    icon: "📚" },
-  { href: "/dictionary", label: "Từ điển",    icon: "📖" },
-  { href: "/progress",   label: "Tiến độ",    icon: "📈" },
-];
 
 export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) {
   const pathname = usePathname();
@@ -29,19 +31,27 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
     router.push("/");
   };
 
+  const navLinks = [
+    { href: "/learn",      label: "Học mới",    icon: Sparkles },
+    { href: "/review",     label: "Ôn tập",     icon: Repeat },
+    { href: "/vocabulary", label: "Từ vựng",    icon: BookOpen },
+    { href: "/dictionary", label: "Từ điển",    icon: Search },
+    { href: "/progress",   label: "Tiến độ",    icon: BarChart2 },
+  ];
+
   return (
-    <nav className="navbar">
+    <nav className="navbar border-b" style={{ borderColor: "var(--border-color)", background: "var(--surface)" }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
 
         {/* Logo */}
         <Link
-          href={userEmail ? "/dashboard" : "/"}
-          className="flex items-center gap-2 group"
+          href={showBackToDashboard ? "/dashboard" : (userEmail ? "/dashboard" : "/")}
+          className="flex items-center gap-2 group transition-transform active:scale-95"
         >
-          <span className="text-xl">🌿</span>
+          <Image src="/icon-192.png" alt="Logo" width={24} height={24} className="rounded-full object-cover transition-transform group-hover:rotate-12 duration-300" />
           <span className="text-base font-bold tracking-tight"
-            style={{ color: "var(--primary)" }}>
-            Nihongo Master
+            style={{ color: "var(--text)" }}>
+            Nihongo <span style={{ color: "var(--primary)" }}>Master</span>
           </span>
         </Link>
 
@@ -50,6 +60,7 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
           <div className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = pathname === link.href;
+              const Icon = link.icon;
               return (
                 <Link
                   key={link.href}
@@ -58,10 +69,10 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
                     transition-all duration-200 ease-spring
                     ${isActive
                       ? "bg-[var(--primary)] text-[#0d1f14]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-surface-2"
+                      : "text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]"
                     }`}
                 >
-                  <span className="text-xs">{link.icon}</span>
+                  <Icon className="w-4 h-4" />
                   {link.label}
                 </Link>
               );
@@ -73,11 +84,10 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
         {showBackToDashboard && (
           <Link
             href="/dashboard"
-            className="flex items-center gap-1.5 text-sm font-medium text-muted hover:text-tx transition-colors"
+            className="flex items-center gap-1.5 text-sm font-medium hover:text-[var(--text)] transition-colors"
+            style={{ color: "var(--text-muted)" }}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            <ArrowLeft className="w-4 h-4" />
             Dashboard
           </Link>
         )}
@@ -88,14 +98,15 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
 
           {userEmail && (
             <>
-              <span className="hidden sm:block text-xs text-muted px-2">
+              <span className="hidden sm:block text-xs px-2" style={{ color: "var(--text-faint)" }}>
                 {userEmail.split("@")[0]}
               </span>
               <button
                 onClick={handleLogout}
-                className="btn btn-ghost text-sm px-3 py-1.5"
+                className="btn btn-ghost text-sm px-3 py-1.5 flex items-center gap-1 text-red-500 hover:bg-red-500/10"
               >
-                Đăng xuất
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Đăng xuất</span>
               </button>
             </>
           )}

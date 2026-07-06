@@ -1,21 +1,63 @@
 // src/components/ui/NotificationSetup.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { requestNotificationPermission } from "@/lib/notifications";
+import { useState, useEffect, useRef } from "react";
+import {
+  requestNotificationPermission,
+  sendNotification,
+  canNotifyNow,
+  setLastNotifyTime,
+} from "@/lib/notifications";
+
+// Gửi 1 thông báo test ngay lập tức
+function sendTestNotification() {
+  if (Notification.permission !== "granted") return;
+  if (!canNotifyNow()) return;
+  sendNotification(
+    "🌿 Nihongo Master — Nhắc học!",
+    "Đây là thông báo test (mỗi 5 phút). Bạn đang online và app đang mở."
+  );
+  setLastNotifyTime();
+}
 
 export default function NotificationSetup() {
   const [show, setShow] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Khởi động vòng lặp 5 phút nếu đã có quyền
+  const startInterval = () => {
+    if (intervalRef.current) return; // tránh duplicate
+    // Gửi ngay lần đầu
+    sendTestNotification();
+    // Sau đó cứ 5 phút 1 lần
+    intervalRef.current = setInterval(() => {
+      sendTestNotification();
+    }, 5 * 60 * 1000);
+  };
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+
+    if (Notification.permission === "granted") {
+      // Đã có quyền → bắt đầu interval ngay
+      startInterval();
+    } else if (Notification.permission === "default") {
+      // Chưa hỏi → hiện banner sau 3 giây
       setTimeout(() => setShow(true), 3000);
     }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAllow = async () => {
     const granted = await requestNotificationPermission();
-    if (granted) setShow(false);
+    if (granted) {
+      setShow(false);
+      startInterval();
+    }
   };
 
   if (!show) return null;

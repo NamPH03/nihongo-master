@@ -1,27 +1,39 @@
 // src/app/page.tsx
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import { BookOpen, Layers, Repeat, Flame } from "lucide-react";
 
 const features = [
   {
-    icon: "📚",
+    icon: BookOpen,
     label: "Từ vựng N5–N1",
     desc: "Kho từ đầy đủ theo từng cấp JLPT, có ví dụ câu thực tế do AI biên soạn.",
+    color: "#3b82f6",
+    bg: "rgba(59,130,246,0.1)"
   },
   {
-    icon: "🃏",
+    icon: Layers,
     label: "Flashcard thông minh",
     desc: "Lật thẻ 3D mượt mà — nhìn từ, nghe phát âm, chọn nghĩa, gõ reading.",
+    color: "var(--primary)",
+    bg: "var(--primary-glow)"
   },
   {
-    icon: "🔁",
+    icon: Repeat,
     label: "Ôn tập ngắt quãng",
     desc: "Thuật toán SRS tự động lên lịch từ cần ôn đúng lúc não sắp quên.",
+    color: "#a855f7",
+    bg: "rgba(168,85,247,0.1)"
   },
   {
-    icon: "📈",
+    icon: Flame,
     label: "Theo dõi streak",
     desc: "Biểu đồ học tập hàng ngày, duy trì chuỗi ngày không bỏ lỡ.",
+    color: "#f97316",
+    bg: "rgba(249,115,22,0.1)"
   },
 ];
 
@@ -46,9 +58,9 @@ export default function HomePage() {
         style={{ background: "var(--nav-bg)" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🌿</span>
-            <span className="text-base font-bold" style={{ color: "var(--primary)" }}>
-              Nihongo Master
+            <Image src="/icon-192.png" alt="Logo" width={24} height={24} className="rounded-full object-cover" />
+            <span className="text-base font-bold" style={{ color: "var(--text)" }}>
+              Nihongo <span style={{ color: "var(--primary)" }}>Master</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -150,21 +162,28 @@ export default function HomePage() {
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {features.map((f, i) => (
-              <div
-                key={f.label}
-                className="card p-6 animate-fade-up"
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                <div className="text-3xl mb-3">{f.icon}</div>
-                <h3 className="font-semibold text-base mb-1" style={{ color: "var(--text)" }}>
-                  {f.label}
-                </h3>
-                <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                  {f.desc}
-                </p>
-              </div>
-            ))}
+            {features.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <div
+                  key={f.label}
+                  className="card p-6 animate-fade-up flex flex-col gap-3"
+                  style={{ animationDelay: `${i * 80}ms` }}
+                >
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: f.bg }}>
+                    <Icon className="w-6 h-6" style={{ color: f.color }} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base mb-1" style={{ color: "var(--text)" }}>
+                      {f.label}
+                    </h3>
+                    <p className="text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                      {f.desc}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -179,27 +198,17 @@ export default function HomePage() {
             boxShadow: "var(--shadow-lg)",
           }}
         >
-          <div className="text-4xl mb-4">🌿</div>
-          <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
-            Sẵn sàng bắt đầu?
+          <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text)" }}>
+            Sẵn sàng chinh phục tiếng Nhật?
           </h2>
-          <p className="mb-6" style={{ color: "var(--text-muted)" }}>
-            Chỉ cần 10 phút mỗi ngày. Hoàn toàn miễn phí.
+          <p className="text-sm mb-6 max-w-sm mx-auto" style={{ color: "var(--text-muted)" }}>
+            Bắt đầu bài học đầu tiên hoàn toàn miễn phí ngay hôm nay.
           </p>
-          <Link href="/register" className="btn btn-primary px-8 py-3 text-base rounded-2xl">
-            Tạo tài khoản miễn phí →
+          <Link href="/register" className="btn btn-primary px-8 py-3 rounded-xl text-sm font-semibold">
+            🎯 Đăng ký tài khoản ngay
           </Link>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer
-        className="relative z-10 text-center py-6 text-xs border-t border-theme"
-        style={{ color: "var(--text-faint)" }}
-      >
-        © 2026 Nihongo Master — Học tiếng Nhật mỗi ngày 🌿
-      </footer>
-
     </main>
   );
 }

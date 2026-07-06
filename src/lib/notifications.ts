@@ -7,11 +7,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
     console.log("Trình duyệt không hỗ trợ thông báo");
     return false;
   }
-
   if (Notification.permission === "granted") return true;
-
   if (Notification.permission === "denied") return false;
-
   const permission = await Notification.requestPermission();
   return permission === "granted";
 }
@@ -19,12 +16,11 @@ export async function requestNotificationPermission(): Promise<boolean> {
 // Gửi thông báo
 export function sendNotification(title: string, body: string) {
   if (Notification.permission !== "granted") return;
-
   new Notification(title, {
     body,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
-    tag: "nihongo-master", // Tránh spam nhiều thông báo
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: "nihongo-master",
   });
 }
 
@@ -32,8 +28,7 @@ export function sendNotification(title: string, body: string) {
 export function checkAndNotify(dueCount: number, streak: number, studiedToday: boolean) {
   if (Notification.permission !== "granted") return;
 
-  // Thông báo 1 — Số từ cần ôn là bội số của 30
-  if (dueCount > 0 && dueCount % 30 === 0) {
+  if (dueCount > 0) {
     sendNotification(
       "📚 Đến giờ ôn tập rồi!",
       `Bạn có ${dueCount} từ cần ôn tập. Học ngay để không quên nhé!`
@@ -41,30 +36,39 @@ export function checkAndNotify(dueCount: number, streak: number, studiedToday: b
     return;
   }
 
-  // Thông báo 2 — Nhắc streak nếu chưa học hôm nay
-  // Chỉ nhắc sau 20:00 tối
-  const hour = new Date().getHours();
-  if (hour >= 20 && !studiedToday && streak > 0) {
+  if (!studiedToday && streak > 0) {
     sendNotification(
       `🔥 Streak ${streak} ngày sắp mất!`,
       "Bạn chưa học hôm nay! Chỉ cần 1 từ thôi để giữ streak nhé!"
     );
+    return;
   }
+
+  // Test notification — luôn gửi dù không có từ cần ôn
+  sendNotification(
+    "🌿 Nihongo Master",
+    "Hãy dành 5 phút ôn từ vựng tiếng Nhật hôm nay nhé!"
+  );
 }
 
 // Lưu thời gian thông báo cuối để tránh spam
 export function getLastNotifyTime(): string {
-  return localStorage.getItem("lastNotifyTime") || "";
+  try { return localStorage.getItem("lastNotifyTime") || ""; }
+  catch { return ""; }
 }
 
 export function setLastNotifyTime(): void {
-  localStorage.setItem("lastNotifyTime", new Date().toISOString());
+  try { localStorage.setItem("lastNotifyTime", new Date().toISOString()); }
+  catch { /* ignore */ }
 }
 
-// Kiểm tra đã thông báo trong 1 tiếng chưa
+// Kiểm tra đã thông báo trong vòng N phút chưa
+// TEST MODE: 5 phút — sau khi xác nhận hoạt động, đổi lại 60 phút
+const NOTIFY_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
+
 export function canNotifyNow(): boolean {
   const last = getLastNotifyTime();
   if (!last) return true;
   const diff = Date.now() - new Date(last).getTime();
-  return diff > 60 * 60 * 1000; // 1 tiếng
+  return diff > NOTIFY_INTERVAL_MS;
 }

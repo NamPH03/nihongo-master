@@ -13,6 +13,17 @@ import NotificationSetup from "@/components/ui/NotificationSetup";
 import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
 import Navbar from "@/components/ui/Navbar";
 
+import { 
+  Flame, 
+  BookOpen, 
+  Sparkles, 
+  Clock, 
+  Repeat, 
+  Search, 
+  BarChart2,
+  BookCheck
+} from "lucide-react";
+
 const srColors: Record<number, string> = {
   1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#3b82f6", 5: "#22c55e",
 };
@@ -25,11 +36,11 @@ const srBg: Record<number, string> = {
 };
 
 const navTiles = [
-  { icon: "🎯", label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",      active: true  },
-  { icon: "🔁", label: "Ôn tập",       sub: "",                       href: "/review",     active: true  },
-  { icon: "📚", label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary", active: true  },
-  { icon: "📖", label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary", active: true  },
-  { icon: "📈", label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",   active: true  },
+  { icon: Sparkles, label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",      active: true  },
+  { icon: Repeat,   label: "Ôn tập",       sub: "",                       href: "/review",     active: true  },
+  { icon: BookOpen, label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary", active: true  },
+  { icon: Search,   label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary", active: true  },
+  { icon: BarChart2,label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",   active: true  },
 ];
 
 export default function DashboardPage() {
@@ -117,18 +128,19 @@ export default function DashboardPage() {
 
         {activeTab === "overview" ? (
           <>
-            {/* Stats grid */}
             <div className="grid grid-cols-4 gap-3 mb-6 animate-fade-up">
               {[
-                { emoji: "🔥", value: progress?.streak || 0, label: "Streak", color: "#f97316" },
-                { emoji: "📚", value: totalLearned,           label: "Đã học",  color: "#3b82f6" },
-                { emoji: "⭐", value: todayCount,              label: "Hôm nay", color: "var(--primary)" },
-                { emoji: "⏰", value: dueCount,                label: "Cần ôn",  color: "#ef4444" },
-              ].map(({ emoji, value, label, color }) => (
-                <div key={label} className="card p-4 text-center">
-                  <div className="text-2xl mb-1">{emoji}</div>
+                { icon: Flame,        value: progress?.streak || 0, label: "Streak", color: "#f97316", bg: "rgba(249,115,22,0.1)" },
+                { icon: BookCheck,    value: totalLearned,           label: "Đã học",  color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
+                { icon: Sparkles,     value: todayCount,              label: "Hôm nay", color: "var(--primary)", bg: "var(--primary-glow)" },
+                { icon: Clock,        value: dueCount,                label: "Cần ôn",  color: "#ef4444", bg: "rgba(239,68,68,0.1)" },
+              ].map(({ icon: Icon, value, label, color, bg }) => (
+                <div key={label} className="card p-4 flex flex-col items-center justify-center">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2" style={{ background: bg }}>
+                    <Icon className="w-5 h-5" style={{ color }} />
+                  </div>
                   <div className="tabular text-xl font-bold" style={{ color }}>{value}</div>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{label}</div>
+                  <div className="text-[10px] uppercase font-semibold tracking-wider mt-1" style={{ color: "var(--text-faint)" }}>{label}</div>
                 </div>
               ))}
             </div>
@@ -186,17 +198,19 @@ export default function DashboardPage() {
                 const sub = tile.href === "/review"
                   ? (dueCount > 0 ? `${dueCount} từ cần ôn` : "Chưa có từ cần ôn")
                   : tile.sub;
+                const Icon = tile.icon;
 
                 return (
                   <Link
                     key={tile.label}
                     href={tile.href}
-                    className={`card p-5 transition-all duration-200 ease-spring animate-fade-up
+                    className={`card p-5 flex flex-col justify-between transition-all duration-200 ease-spring animate-fade-up
                       ${!tile.active ? "opacity-40 pointer-events-none" : ""}
                       ${isDue ? "ring-1" : ""}
                     `}
                     style={{
                       animationDelay: `${i * 60}ms`,
+                      minHeight: "130px",
                       ...(isDue ? {
                         background: "var(--primary)",
                         ringColor: "var(--primary)",
@@ -204,12 +218,17 @@ export default function DashboardPage() {
                       } : {}),
                     }}
                   >
-                    <div className="text-2xl mb-2">{tile.icon}</div>
-                    <div className="font-semibold text-sm" style={{ color: isDue ? "#0d1f14" : "var(--text)" }}>
-                      {tile.label}
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" 
+                      style={{ background: isDue ? "rgba(13,31,20,0.1)" : "var(--surface-2)" }}>
+                      <Icon className="w-5 h-5" style={{ color: isDue ? "#0d1f14" : "var(--primary)" }} />
                     </div>
-                    <div className="text-xs mt-0.5" style={{ color: isDue ? "#0d5a22" : "var(--text-muted)" }}>
-                      {sub}
+                    <div>
+                      <div className="font-semibold text-sm" style={{ color: isDue ? "#0d1f14" : "var(--text)" }}>
+                        {tile.label}
+                      </div>
+                      <div className="text-xs mt-0.5" style={{ color: isDue ? "#0d5a22" : "var(--text-muted)" }}>
+                        {sub}
+                      </div>
                     </div>
                   </Link>
                 );
