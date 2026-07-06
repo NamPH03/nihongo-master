@@ -7,7 +7,7 @@ import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { speakJapanese } from "@/lib/speech";
 import type { DictionaryWord } from "@/types/dictionary";
 import { saveWordToSchedule } from "@/lib/progress";
-import { Volume2, Bookmark, BookmarkCheck, Info } from "lucide-react";
+import { Volume2, Bookmark, BookmarkCheck, Info, X } from "lucide-react";
 
 type Props = { word: DictionaryWord };
 
@@ -28,10 +28,19 @@ type KanjiDetail = {
   on_readings: string[];
 };
 
+// Hàm chuyển chữ Kanji thành mã Unicode Hex 5 kí tự (dạng KanjiVG)
+function getKanjiVGCode(char: string): string {
+  const code = char.charCodeAt(0).toString(16);
+  return code.padStart(5, "0");
+}
+
 export default function WordDetail({ word }: Props) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [kanjis, setKanjis] = useState<KanjiDetail[]>([]);
   const [loadingKanji, setLoadingKanji] = useState(false);
+  
+  // Lưu chữ Kanji được chọn để xem sơ đồ nét vẽ
+  const [selectedStrokeKanji, setSelectedStrokeKanji] = useState<string | null>(null);
 
   useEffect(() => {
     const checkSaved = async () => {
@@ -124,7 +133,36 @@ export default function WordDetail({ word }: Props) {
   const lvl = levelStyle[word.level || ""] || { bg: "var(--surface-2)", color: "var(--text-muted)" };
 
   return (
-    <div className="card p-6 rounded-2xl animate-fade-up flex flex-col gap-4">
+    <div className="card p-6 rounded-2xl animate-fade-up flex flex-col gap-4 relative">
+
+      {/* Sơ đồ nét vẽ Kanji Modal/Overlay */}
+      {selectedStrokeKanji && (
+        <div className="absolute inset-0 bg-page/95 rounded-2xl z-20 p-6 flex flex-col gap-4 animate-scale-in">
+          <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: "var(--border-color)" }}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              Hướng dẫn nét vẽ chữ Hán: <span className="font-jp text-lg font-bold" style={{ color: "var(--text)" }}>{selectedStrokeKanji}</span>
+            </span>
+            <button
+              onClick={() => setSelectedStrokeKanji(null)}
+              className="p-1 rounded-lg hover:bg-[var(--surface-2)] text-[var(--text-muted)]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center bg-white dark:bg-zinc-900 rounded-xl p-4 border" style={{ borderColor: "var(--border-strong)" }}>
+            {/* SVG KanjiVG hiển thị nét vẽ động/tĩnh cùng số thứ tự nét viết */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://raw.githubusercontent.com/KanjiVG/KanjiVG/master/kanji/0${getKanjiVGCode(selectedStrokeKanji)}.svg`}
+              alt={`Nét vẽ chữ ${selectedStrokeKanji}`}
+              className="w-36 h-36 filter dark:invert"
+            />
+            <p className="text-[10px] mt-4 text-center" style={{ color: "var(--text-faint)" }}>
+              Thứ tự viết được ghi theo số thứ tự từ 1 trên từng nét vẽ.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Thông tin từ vựng */}
       <div className="flex justify-between items-start">
@@ -206,13 +244,17 @@ export default function WordDetail({ word }: Props) {
           <div className="flex items-center gap-1.5">
             <Info className="w-4 h-4" style={{ color: "var(--primary)" }} />
             <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-              Chữ Hán liên quan ({kanjis.length})
+              Chữ Hán liên quan ({kanjis.length}) (Bấm vào chữ để xem cách viết)
             </h3>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {kanjis.map((k) => (
-              <div key={k.kanji} className="flex items-start gap-2.5 p-3 rounded-xl"
-                style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}>
+              <div
+                key={k.kanji}
+                onClick={() => setSelectedStrokeKanji(k.kanji)}
+                className="flex items-start gap-2.5 p-3 rounded-xl cursor-pointer hover:bg-[var(--surface-3)] active:scale-[0.98] transition-all"
+                style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}
+              >
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center font-jp text-2xl font-bold"
                   style={{ background: "var(--surface-3)", color: "var(--text)" }}>
                   {k.kanji}

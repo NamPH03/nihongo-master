@@ -1,3 +1,4 @@
+// src/app/(dashboard)/dictionary/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -7,6 +8,7 @@ import { useRouter } from "next/navigation";
 import SearchBar from "@/components/dictionary/SearchBar";
 import WordDetail from "@/components/dictionary/WordDetail";
 import VocabularyList from "@/components/dictionary/VocabularyList";
+import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
 import { useDictionary } from "@/hooks/useDictionary";
 import Navbar from "@/components/ui/Navbar";
 
@@ -16,6 +18,7 @@ export default function DictionaryPage() {
   const [tab, setTab] = useState<Tab>("search");
   const [dictionaryLanguage, setDictionaryLanguage] = useState<"vi" | "en">("vi");
   const [userEmail, setUserEmail] = useState("");
+  const [showHandwriting, setShowHandwriting] = useState(false);
   const router = useRouter();
   const previousLanguage = useRef<"vi" | "en">("vi");
   const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary(dictionaryLanguage);
@@ -36,8 +39,13 @@ export default function DictionaryPage() {
     }
   }, [dictionaryLanguage, query, search, clearSearch]);
 
+  const handleSelectHandwritingChar = (char: string) => {
+    const newQuery = query + char;
+    search(newQuery);
+  };
+
   return (
-    <div className="min-h-[100dvh] bg-page">
+    <div className="min-h-[100dvh] bg-page font-sans">
       <Navbar userEmail={userEmail} showBackToDashboard />
 
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -46,7 +54,7 @@ export default function DictionaryPage() {
         <div className="mb-6 animate-fade-up">
           <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>Từ điển</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Tra cứu trong kho từ, hoặc tìm qua API bên ngoài
+            Tra cứu từ vựng tiếng Nhật, phân tích Kanji chi tiết
           </p>
         </div>
 
@@ -59,7 +67,7 @@ export default function DictionaryPage() {
             <select
               value={dictionaryLanguage}
               onChange={(e) => setDictionaryLanguage(e.target.value as "vi" | "en")}
-              className="input flex-1"
+              className="input flex-1 font-sans"
               style={{ padding: "0.5rem 0.75rem" }}
             >
               <option value="vi">🇻🇳 Tiếng Việt</option>
@@ -87,15 +95,30 @@ export default function DictionaryPage() {
 
         {/* Tab: Search */}
         {tab === "search" && (
-          <div className="animate-fade-up">
+          <div className="animate-fade-up flex flex-col gap-4">
             <SearchBar
-              query={query} onChange={search} onClear={clearSearch} loading={loading}
+              query={query}
+              onChange={search}
+              onClear={clearSearch}
+              loading={loading}
+              showHandwriting={showHandwriting}
+              onToggleHandwriting={() => setShowHandwriting(!showHandwriting)}
               placeholder={dictionaryLanguage === "vi"
                 ? "Nhập từ tiếng Nhật, tiếng Việt hoặc hiragana..."
                 : "Enter Japanese, English or hiragana..."}
             />
 
-            <div className="mt-4 space-y-3">
+            {/* Panel vẽ tay */}
+            {showHandwriting && (
+              <div className="animate-scale-in">
+                <HandwritingCanvas
+                  onSelectWord={handleSelectHandwritingChar}
+                  onClose={() => setShowHandwriting(false)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-3">
               {error && (
                 <div className="px-4 py-3 rounded-xl text-sm"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.15)" }}>
@@ -106,7 +129,7 @@ export default function DictionaryPage() {
               {!hasSearched && !loading && (
                 <div className="text-center py-16 animate-fade-in">
                   <div className="text-5xl mb-3">🔍</div>
-                  <p style={{ color: "var(--text-muted)" }}>Nhập từ để tra cứu</p>
+                  <p style={{ color: "var(--text-muted)" }}>Nhập từ để tra cứu hoặc vẽ tay</p>
                   <p className="text-sm mt-1" style={{ color: "var(--text-faint)" }}>
                     Ví dụ: 食べる · たべる · ăn · eat
                   </p>

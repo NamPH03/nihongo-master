@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -20,7 +21,12 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      // Upsert profile for leaderboard (merge: true so we don't overwrite existing data)
+      await setDoc(doc(db, "users", cred.user.uid), {
+        email: cred.user.email,
+        displayName: email.split("@")[0],
+      }, { merge: true });
       router.push("/dashboard");
     } catch (err: unknown) {
       const e = err as { code?: string };

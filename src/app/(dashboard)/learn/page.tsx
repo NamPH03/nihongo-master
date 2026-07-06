@@ -15,6 +15,8 @@ import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
 import Navbar from "@/components/ui/Navbar";
+import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
+// import không cần thiết đã bị xóa
 
 type Vocabulary = {
   id: string; word: string; reading: string; type: string;
@@ -22,10 +24,23 @@ type Vocabulary = {
   level: string; status: string;
 };
 
-type Step = "flashcard" | "meaning-to-word" | "listening" | "kanji" | "result";
+type Step = "flashcard" | "meaning-to-word" | "listening" | "kanji" | "write-kanji" | "result";
 
 function hasKanji(text: string): boolean {
   return /[\u4e00-\u9faf]/.test(text);
+}
+
+// Lấy tất cả kí tự Kanji trong từ vựng
+function getKanjiChars(text: string): string[] {
+  const kanjiRegex = /[\u4e00-\u9faf]/g;
+  const found = text.match(kanjiRegex);
+  return found ? Array.from(new Set(found)) : [];
+}
+
+// Chuyển Kanji thành Unicode Hex 5 kí tự
+function getKanjiVGCode(char: string): string {
+  const code = char.charCodeAt(0).toString(16);
+  return code.padStart(5, "0");
 }
 
 function generateChoices(correct: Vocabulary, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
@@ -37,7 +52,12 @@ function generateChoices(correct: Vocabulary, allWords: Vocabulary[], type: "wor
 }
 
 const stepLabel: Record<Step, string> = {
-  flashcard: "Thẻ", "meaning-to-word": "Chọn từ", listening: "Nghe", kanji: "Kanji", result: "",
+  flashcard: "Thẻ", 
+  "meaning-to-word": "Chọn từ", 
+  listening: "Nghe", 
+  kanji: "Học Kanji", 
+  "write-kanji": "Viết chữ",
+  result: "",
 };
 
 export default function LearnPage() {
@@ -52,6 +72,10 @@ export default function LearnPage() {
   const [learnedCount, setLearnedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+
+  // State cho phần tự luyện viết Kanji
+  const [recognizedCandidates, setRecognizedCandidates] = useState<string[]>([]);
+  const [showKanjiHint, setShowKanjiHint] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -70,15 +94,11 @@ export default function LearnPage() {
         const learnedIds = await getLearnedWordIds(user.uid);
         const savedNewIds = await getNewSavedWordIds(user.uid);
 
-        // Lấy tất cả từ được lưu từ từ điển nhưng chưa học
         const savedWords = allVocab.filter((w) => savedNewIds.has(w.id));
-        
-        // Lấy các từ còn lại trong DB mà user chưa học và chưa lưu
         const brandNewWords = allVocab
           .filter((w) => !learnedIds.has(w.id) && !savedNewIds.has(w.id))
-          .sort(() => Math.random() - 0.5); // Xáo trộn ngẫu nhiên toàn bộ từ mới
+          .sort(() => Math.random() - 0.5);
 
-        // Ưu tiên từ lưu từ từ điển trước, sau đó lấy thêm từ ngẫu nhiên cho đủ 10 từ
         const wordsToLearn = [...savedWords, ...brandNewWords].slice(0, 10);
         setWords(wordsToLearn);
         setAllWords(allVocab);
@@ -90,7 +110,6 @@ export default function LearnPage() {
 
   useEffect(() => {
     if (words.length > 0) setTimeout(() => speakJapanese(words[0].word, false), 500);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [words]);
 
   const currentWord = words[currentIndex];
@@ -100,13 +119,16 @@ export default function LearnPage() {
     else if (step === "listening") setChoices(generateChoices(word, allWords, "meaning"));
     setSelectedAnswer(null);
     setAnswerStatus("idle");
+    setRecognizedCandidates([]);
+    setShowKanjiHint(null);
   }, [allWords]);
 
   const getNextStep = (current: Step, word: Vocabulary): Step | "done" => {
     if (current === "flashcard") return "meaning-to-word";
     if (current === "meaning-to-word") return "listening";
     if (current === "listening") return hasKanji(word.word) ? "kanji" : "done";
-    if (current === "kanji") return "done";
+    if (current === "kanji") return hasKanji(word.word) ? "write-kanji" : "done";
+    if (current === "write-kanji") return "done";
     return "done";
   };
 
@@ -126,6 +148,8 @@ export default function LearnPage() {
       setIsFlipped(false);
       setSelectedAnswer(null);
       setAnswerStatus("idle");
+      setRecognizedCandidates([]);
+      setShowKanjiHint(null);
       setTimeout(() => speakJapanese(words[nextIdx].word, false), 300);
     }
   };
@@ -148,6 +172,20 @@ export default function LearnPage() {
     setAnswerStatus(choice === correct ? "correct" : "wrong");
   };
 
+  // Xử lý kiểm tra vẽ Kanji
+  const checkDrawingKanji = () => {
+    const kanjiChars = getKanjiChars(currentWord.word);
+    
+    // Nếu vẽ tay nhận dạng được bất kì chữ Kanji nào nằm trong từ vựng thì tính là đúng
+    const hasCorrectKanji = kanjiChars.some((char) => recognizedCandidates.includes(char));
+    
+    if (hasCorrectKanji) {
+      setAnswerStatus("correct");
+    } else {
+      setAnswerStatus("wrong");
+    }
+  };
+
   // Choice button style using CSS vars
   const getChoiceStyle = (choice: string): React.CSSProperties => {
     const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
@@ -159,7 +197,10 @@ export default function LearnPage() {
 
   const stepList = (word: Vocabulary): Step[] => {
     const steps: Step[] = ["flashcard", "meaning-to-word", "listening"];
-    if (word && hasKanji(word.word)) steps.push("kanji");
+    if (word && hasKanji(word.word)) {
+      steps.push("kanji");
+      steps.push("write-kanji");
+    }
     return steps;
   };
 
@@ -193,8 +234,10 @@ export default function LearnPage() {
     </div>
   );
 
+  const kanjisInWord = currentWord ? getKanjiChars(currentWord.word) : [];
+
   return (
-    <div className="min-h-[100dvh] bg-page">
+    <div className="min-h-[100dvh] bg-page font-sans">
       <Navbar userEmail="" showBackToDashboard />
 
       <div className="max-w-md mx-auto px-4 py-6">
@@ -218,15 +261,15 @@ export default function LearnPage() {
 
           {/* Step indicators */}
           {currentStep !== "result" && currentWord && (
-            <div className="flex justify-center items-center gap-2 mt-3">
+            <div className="flex justify-center items-center gap-1.5 mt-3 flex-wrap">
               {stepList(currentWord).map((step, i) => {
                 const stepIdx = stepList(currentWord).indexOf(currentStep);
                 const isPast = stepIdx > i;
                 const isCurrent = currentStep === step;
                 return (
-                  <div key={step} className="flex items-center gap-2">
+                  <div key={step} className="flex items-center gap-1.5">
                     <div
-                      className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all duration-300"
+                      className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all duration-300"
                       style={
                         isCurrent
                           ? { background: "var(--primary)", color: "#0d1f14" }
@@ -239,7 +282,7 @@ export default function LearnPage() {
                       <span className="ml-0.5">{stepLabel[step]}</span>
                     </div>
                     {i < stepList(currentWord).length - 1 && (
-                      <div className="w-4 h-px" style={{ background: "var(--border-color)" }} />
+                      <div className="w-2.5 h-px" style={{ background: "var(--border-color)" }} />
                     )}
                   </div>
                 );
@@ -265,11 +308,11 @@ export default function LearnPage() {
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-                    <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-faint)" }}>
+                    <p className="text-[10px] uppercase tracking-wider mb-4" style={{ color: "var(--text-faint)" }}>
                       Bấm để xem nghĩa
                     </p>
                     {currentWord.word !== currentWord.reading && (
-                      <div className="text-lg mb-2" style={{ color: "var(--primary)" }}>
+                      <div className="text-base mb-2 font-jp font-semibold" style={{ color: "var(--primary)" }}>
                         {currentWord.reading}
                       </div>
                     )}
@@ -286,7 +329,7 @@ export default function LearnPage() {
                     <SpeakButton text={currentWord.word} slow size="sm" />
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-                    <div className="text-4xl font-bold mb-3" style={{ color: "var(--text)" }}>
+                    <div className="text-3xl font-bold mb-3" style={{ color: "var(--text)" }}>
                       {currentWord.meaning}
                     </div>
                     <span className="badge" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
@@ -306,7 +349,7 @@ export default function LearnPage() {
                 Tiếp tục →
               </button>
             ) : (
-              <p className="text-center text-sm mt-4" style={{ color: "var(--text-faint)" }}>
+              <p className="text-center text-xs mt-4" style={{ color: "var(--text-faint)" }}>
                 💡 Bấm vào thẻ để xem nghĩa
               </p>
             )}
@@ -336,11 +379,11 @@ export default function LearnPage() {
                     ...getChoiceStyle(choice),
                   }}
                 >
-                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
                     style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
                     {i + 1}
                   </span>
-                  <span className="font-jp text-lg">{choice}</span>
+                  <span className="font-jp text-lg font-medium">{choice}</span>
                 </button>
               ))}
             </div>
@@ -387,7 +430,7 @@ export default function LearnPage() {
                     ...getChoiceStyle(choice),
                   }}
                 >
-                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
                     style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
                     {i + 1}
                   </span>
@@ -410,32 +453,58 @@ export default function LearnPage() {
           </div>
         )}
 
-        {/* ===== KANJI ===== */}
+        {/* ===== KANJI (HỌC NÉT VẼ) ===== */}
         {currentStep === "kanji" && currentWord && (
           <div className="card p-8 text-center animate-scale-in rounded-3xl">
             <p className="text-xs uppercase tracking-widest mb-6" style={{ color: "var(--text-faint)" }}>
               Ghi nhớ cách viết Kanji
             </p>
             <div className="flex justify-center gap-4 mb-6 flex-wrap">
-              {currentWord.word
-                .split("")
-                .filter((char) => /[\u4e00-\u9faf]/.test(char))
-                .map((kanji, i) => (
+              {kanjisInWord.map((kanji, i) => (
+                <div key={i} className="flex flex-col gap-2 items-center">
                   <div
-                    key={i}
-                    className="w-32 h-32 rounded-2xl flex items-center justify-center"
+                    onClick={() => setShowKanjiHint(kanji)}
+                    className="w-28 h-28 rounded-2xl flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-transform"
                     style={{
                       background: "var(--surface-2)",
                       border: "2px solid var(--border-strong)",
                       boxShadow: "var(--shadow-md)",
                     }}
+                    title="Bấm để xem nét vẽ"
                   >
-                    <span className="font-jp text-6xl font-black" style={{ color: "var(--text)" }}>
+                    <span className="font-jp text-5xl font-black" style={{ color: "var(--text)" }}>
                       {kanji}
                     </span>
                   </div>
-                ))}
+                  <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Xem cách viết</span>
+                </div>
+              ))}
             </div>
+
+            {/* Hint SVG Modal nhúng trực tiếp */}
+            {showKanjiHint && (
+              <div className="rounded-2xl p-4 mb-5 border relative" style={{ background: "var(--surface-2)", borderColor: "var(--border-strong)" }}>
+                <button
+                  onClick={() => setShowKanjiHint(null)}
+                  className="absolute top-2 right-2 p-1 rounded-lg text-xs"
+                  style={{ background: "var(--surface-3)" }}
+                >
+                  Đóng
+                </button>
+                <div className="text-[10px] uppercase font-bold tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                  Thứ tự nét viết chữ {showKanjiHint}:
+                </div>
+                <div className="flex justify-center bg-white rounded-xl p-2 max-w-[120px] mx-auto border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://raw.githubusercontent.com/KanjiVG/KanjiVG/master/kanji/0${getKanjiVGCode(showKanjiHint)}.svg`}
+                    alt={`Nét viết ${showKanjiHint}`}
+                    className="w-24 h-24"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="rounded-2xl p-4 text-left mb-6" style={{ background: "var(--surface-2)" }}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-jp font-medium" style={{ color: "var(--primary)" }}>
@@ -447,12 +516,107 @@ export default function LearnPage() {
               </div>
               <div className="font-semibold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
             </div>
-            <button
-              onClick={nextStep}
-              className="btn btn-primary w-full py-4 rounded-2xl text-base"
-            >
-              ✅ Đã ghi nhớ — Từ tiếp theo
+            
+            <button onClick={nextStep} className="btn btn-primary w-full py-4 rounded-2xl text-base">
+              Tiếp tục luyện viết →
             </button>
+          </div>
+        )}
+
+        {/* ===== WRITE KANJI (LUYỆN VIẾT VẼ TAY) ===== */}
+        {currentStep === "write-kanji" && currentWord && (
+          <div className="card p-6 animate-scale-in rounded-3xl flex flex-col gap-4">
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-widest mb-1.5" style={{ color: "var(--text-faint)" }}>
+                Thử thách viết chữ Hán
+              </p>
+              <h3 className="text-xl font-bold" style={{ color: "var(--text)" }}>
+                Hãy viết chữ Hán của:
+              </h3>
+              <p className="text-lg font-bold mt-2" style={{ color: "var(--primary)" }}>
+                {currentWord.meaning} <span className="text-sm font-jp" style={{ color: "var(--text-muted)" }}>（{currentWord.reading}）</span>
+              </p>
+            </div>
+
+            {/* Handwriting canvas để viết */}
+            <div className="relative">
+              <HandwritingCanvas
+                onSelectWord={(char) => {
+                  // Đưa chữ chọn được vào danh sách dự đoán
+                  setRecognizedCandidates((prev) => Array.from(new Set([...prev, char])));
+                }}
+                onClose={() => {}}
+              />
+            </div>
+
+            {/* Hiển thị các chữ người dùng đã viết/chọn */}
+            {recognizedCandidates.length > 0 && (
+              <div className="p-3 rounded-xl flex flex-wrap gap-2 items-center" style={{ background: "var(--surface-2)" }}>
+                <span className="text-[10px] uppercase font-bold" style={{ color: "var(--text-faint)" }}>Bạn đã chọn viết:</span>
+                {recognizedCandidates.map((char) => (
+                  <span key={char} className="font-jp font-bold text-lg px-2 py-0.5 rounded bg-[var(--surface-3)]" style={{ color: "var(--text)" }}>
+                    {char}
+                  </span>
+                ))}
+                <button
+                  onClick={() => setRecognizedCandidates([])}
+                  className="text-[10px] ml-auto underline"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Làm lại
+                </button>
+              </div>
+            )}
+
+            {/* Panel thông báo kết quả kiểm tra viết */}
+            {answerStatus === "wrong" && (
+              <div className="p-4 rounded-xl border flex flex-col gap-2 bg-red-500/5" style={{ borderColor: "rgba(239,68,68,0.2)" }}>
+                <div className="text-xs font-bold text-red-500">
+                  ❌ Viết chưa chính xác! Cách viết đúng là:
+                </div>
+                <div className="flex gap-4 items-center justify-center pt-2">
+                  {kanjisInWord.map((k) => (
+                    <div key={k} className="flex flex-col items-center bg-white dark:bg-zinc-900 rounded-xl p-2 border">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`https://raw.githubusercontent.com/KanjiVG/KanjiVG/master/kanji/0${getKanjiVGCode(k)}.svg`}
+                        alt={`Nét viết ${k}`}
+                        className="w-16 h-16 filter dark:invert"
+                      />
+                      <span className="font-jp text-xs font-bold mt-1" style={{ color: "var(--text)" }}>{k}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {answerStatus === "correct" && (
+              <div className="p-3 rounded-xl text-center text-sm font-semibold" style={{ background: "rgba(34,197,94,0.1)", color: "var(--primary)" }}>
+                🎉 Chính xác! Bạn viết rất tốt!
+              </div>
+            )}
+
+            {/* Cụm nút bấm kiểm tra và qua bài */}
+            {answerStatus === "idle" ? (
+              <button
+                onClick={checkDrawingKanji}
+                disabled={recognizedCandidates.length === 0}
+                className="btn btn-primary w-full py-3.5 rounded-2xl"
+              >
+                Kiểm tra nét chữ
+              </button>
+            ) : (
+              <button
+                onClick={nextStep}
+                className="btn w-full py-3.5 rounded-2xl font-semibold"
+                style={answerStatus === "correct"
+                  ? { background: "var(--primary)", color: "#0d1f14" }
+                  : { background: "#ef4444", color: "#fff" }
+                }
+              >
+                Tiếp tục
+              </button>
+            )}
           </div>
         )}
 

@@ -14,7 +14,9 @@ import {
   Search, 
   BarChart2, 
   ArrowLeft, 
-  LogOut
+  LogOut,
+  Trophy,
+  Award
 } from "lucide-react";
 
 interface NavbarProps {
@@ -32,11 +34,13 @@ export default function Navbar({ userEmail, showBackToDashboard }: NavbarProps) 
   };
 
   const navLinks = [
-    { href: "/learn",      label: "Học mới",    icon: Sparkles },
-    { href: "/review",     label: "Ôn tập",     icon: Repeat },
-    { href: "/vocabulary", label: "Từ vựng",    icon: BookOpen },
-    { href: "/dictionary", label: "Từ điển",    icon: Search },
-    { href: "/progress",   label: "Tiến độ",    icon: BarChart2 },
+    { href: "/learn",        label: "Học mới",    icon: Sparkles },
+    { href: "/review",       label: "Ôn tập",     icon: Repeat },
+    { href: "/vocabulary",   label: "Từ vựng",    icon: BookOpen },
+    { href: "/dictionary",   label: "Từ điển",    icon: Search },
+    { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
+    { href: "/leaderboard",  label: "Xếp hạng",   icon: Trophy },
+    { href: "/badges",       label: "Danh hiệu",  icon: Award },
   ];
 
   return (

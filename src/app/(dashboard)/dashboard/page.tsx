@@ -9,6 +9,7 @@ import {
   getProgress, getSRStats, getDueWords, getUserWordStatuses,
   ProgressData, UserWordStatus
 } from "@/lib/progress";
+import { fetchLeaderboard, LeaderboardEntry, BADGES } from "@/lib/leaderboard";
 import NotificationSetup from "@/components/ui/NotificationSetup";
 import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
 import Navbar from "@/components/ui/Navbar";
@@ -21,7 +22,9 @@ import {
   Repeat, 
   Search, 
   BarChart2,
-  BookCheck
+  BookCheck,
+  Trophy,
+  Award
 } from "lucide-react";
 
 const srColors: Record<number, string> = {
@@ -36,11 +39,13 @@ const srBg: Record<number, string> = {
 };
 
 const navTiles = [
-  { icon: Sparkles, label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",      active: true  },
-  { icon: Repeat,   label: "Ôn tập",       sub: "",                       href: "/review",     active: true  },
-  { icon: BookOpen, label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary", active: true  },
-  { icon: Search,   label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary", active: true  },
-  { icon: BarChart2,label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",   active: true  },
+  { icon: Sparkles, label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",       active: true  },
+  { icon: Repeat,   label: "Ôn tập",       sub: "",                       href: "/review",      active: true  },
+  { icon: BookOpen, label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary",  active: true  },
+  { icon: Search,   label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary",  active: true  },
+  { icon: BarChart2,label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",    active: true  },
+  { icon: Trophy,   label: "Xếp hạng",     sub: "Bảng xếp hạng XP",      href: "/leaderboard", active: true  },
+  { icon: Award,    label: "Danh hiệu",    sub: "Mở khoá thành tích",     href: "/badges",      active: true  },
 ];
 
 export default function DashboardPage() {
@@ -51,18 +56,21 @@ export default function DashboardPage() {
   const [userWords, setUserWords] = useState<UserWordStatus[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "memory">("overview");
   const [loading, setLoading] = useState(true);
+  const [topEntries, setTopEntries] = useState<LeaderboardEntry[]>([]);
   const router = useRouter();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push("/login"); return; }
       setUserEmail(user.email || "");
-      const [prog, stats, due, words] = await Promise.all([
+      const [prog, stats, due, words, lb] = await Promise.all([
         getProgress(user.uid), getSRStats(user.uid),
         getDueWords(user.uid), getUserWordStatuses(user.uid),
+        fetchLeaderboard(),
       ]);
       setProgress(prog); setSrStats(stats);
       setDueCount(due.length); setUserWords(words);
+      setTopEntries(lb.slice(0, 3));
       setLoading(false);
       if (typeof window !== "undefined" && canNotifyNow()) {
         const todayStr = new Date().toISOString().split("T")[0];
@@ -190,6 +198,46 @@ export default function DashboardPage() {
                 <span>Còn lại: <strong style={{ color: "var(--text)" }}>{968 - totalLearned} từ</strong></span>
               </div>
             </div>
+
+            {/* Mini Leaderboard */}
+            {topEntries.length > 0 && (
+              <div className="card p-5 mb-6 animate-fade-up delay-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="font-semibold" style={{ color: "var(--text)" }}>🏆 Top Học Viên</h2>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Xếp hạng theo điểm XP</p>
+                  </div>
+                  <Link href="/leaderboard" className="text-xs font-medium px-3 py-1 rounded-lg"
+                    style={{ color: "var(--primary)", background: "var(--primary-glow)" }}>
+                    Xem tất cả
+                  </Link>
+                </div>
+                <div className="space-y-2">
+                  {topEntries.map((entry, idx) => {
+                    const medals = ["🥇","🥈","🥉"];
+                    return (
+                      <div key={entry.uid} className="flex items-center gap-3 rounded-xl px-3 py-2"
+                        style={{ background: "var(--surface-2)" }}>
+                        <span className="text-lg w-7 text-center">{medals[idx]}</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>
+                            {entry.displayName}
+                          </span>
+                          <div className="flex gap-1 mt-0.5">
+                            {entry.badges.slice(0,3).map(bId => (
+                              <span key={bId} title={BADGES[bId].name} className="text-xs">{BADGES[bId].emoji}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <span className="font-bold tabular text-sm" style={{ color: "var(--primary)" }}>
+                          {entry.xp.toLocaleString()} XP
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Nav tiles */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up delay-150">

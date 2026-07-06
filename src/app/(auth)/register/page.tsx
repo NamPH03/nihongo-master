@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -23,7 +24,13 @@ export default function RegisterPage() {
     if (password.length < 6) { setError("Mật khẩu phải có ít nhất 6 ký tự."); return; }
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // Save profile to Firestore for leaderboard
+      await setDoc(doc(db, "users", cred.user.uid), {
+        email: cred.user.email,
+        displayName: email.split("@")[0],
+        createdAt: new Date().toISOString(),
+      }, { merge: true });
       router.push("/dashboard");
     } catch (err: unknown) {
       const e = err as { code?: string };
