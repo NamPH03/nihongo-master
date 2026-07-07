@@ -2,8 +2,10 @@
 // Vercel Cron Job — chạy 2 lần/ngày theo lịch trong vercel.json
 // Kiểm tra từng user → gửi push notification phù hợp
 
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminMessaging } from '@/lib/firebase-admin';
+import { getAdminDb, getAdminMessaging } from '@/lib/firebase-admin';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -88,6 +90,9 @@ export async function GET(req: NextRequest) {
 
   const now = new Date().toISOString();
   const todayVN = getTodayVN();
+
+  const adminDb = getAdminDb();
+  const adminMessaging = getAdminMessaging();
 
   // Lấy tất cả FCM tokens từ tất cả users (collectionGroup query)
   const tokensSnap = await adminDb.collectionGroup('fcmTokens').get();
