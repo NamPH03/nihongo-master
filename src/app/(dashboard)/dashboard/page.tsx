@@ -11,7 +11,7 @@ import {
 } from "@/lib/progress";
 import { fetchLeaderboard, LeaderboardEntry, BADGES } from "@/lib/leaderboard";
 import NotificationSetup from "@/components/ui/NotificationSetup";
-import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
+
 import Navbar from "@/components/ui/Navbar";
 
 import { 
@@ -72,12 +72,7 @@ export default function DashboardPage() {
       setDueCount(due.length); setUserWords(words);
       setTopEntries(lb.slice(0, 3));
       setLoading(false);
-      if (typeof window !== "undefined" && canNotifyNow()) {
-        const todayStr = new Date().toISOString().split("T")[0];
-        const studiedToday = (prog.dailyHistory?.[todayStr] || 0) > 0;
-        checkAndNotify(due.length, prog.streak, studiedToday);
-        setLastNotifyTime();
-      }
+
     });
     return () => unsubscribe();
   }, [router]);
