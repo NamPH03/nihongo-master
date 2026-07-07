@@ -21,7 +21,6 @@ import {
   Sparkles, 
   Clock, 
   BookCheck,
-  Trophy,
   ArrowRight,
   Play
 } from "lucide-react";
