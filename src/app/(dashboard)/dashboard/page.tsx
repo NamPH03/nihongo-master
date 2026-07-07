@@ -1,30 +1,29 @@
 "use client";
 
+// src/app/(dashboard)/dashboard/page.tsx
+// Dashboard tập trung vào Ôn tập (Review) làm mặc định và hiển thị phân bố mức ghi nhớ
+
 import { useEffect, useState } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  getProgress, getSRStats, getDueWords, getUserWordStatuses,
-  ProgressData, UserWordStatus
+  getProgress, getSRStats, getDueWords,
+  ProgressData
 } from "@/lib/progress";
-import { fetchLeaderboard, LeaderboardEntry, BADGES } from "@/lib/leaderboard";
+import { fetchLeaderboard, LeaderboardEntry } from "@/lib/leaderboard";
 import NotificationSetup from "@/components/ui/NotificationSetup";
-
 import Navbar from "@/components/ui/Navbar";
 
 import { 
   Flame, 
-  BookOpen, 
   Sparkles, 
   Clock, 
-  Repeat, 
-  Search, 
-  BarChart2,
   BookCheck,
   Trophy,
-  Award
+  ArrowRight,
+  Play
 } from "lucide-react";
 
 const srColors: Record<number, string> = {
@@ -33,28 +32,12 @@ const srColors: Record<number, string> = {
 const srLabels: Record<number, string> = {
   1: "1 tiếng", 2: "1 ngày", 3: "3 ngày", 4: "1 tuần", 5: "2 tháng",
 };
-const srBg: Record<number, string> = {
-  1: "rgba(239,68,68,0.1)", 2: "rgba(249,115,22,0.1)", 3: "rgba(234,179,8,0.1)",
-  4: "rgba(59,130,246,0.1)", 5: "rgba(34,197,94,0.1)",
-};
-
-const navTiles = [
-  { icon: Sparkles, label: "Học từ mới",  sub: "10 từ mỗi buổi",       href: "/learn",       active: true  },
-  { icon: Repeat,   label: "Ôn tập",       sub: "",                       href: "/review",      active: true  },
-  { icon: BookOpen, label: "Từ vựng",      sub: "968 từ N5",              href: "/vocabulary",  active: true  },
-  { icon: Search,   label: "Từ điển",      sub: "Tra cứu từ vựng",        href: "/dictionary",  active: true  },
-  { icon: BarChart2,label: "Tiến độ",      sub: "Xem chi tiết",           href: "/progress",    active: true  },
-  { icon: Trophy,   label: "Xếp hạng",     sub: "Bảng xếp hạng XP",      href: "/leaderboard", active: true  },
-  { icon: Award,    label: "Danh hiệu",    sub: "Mở khoá thành tích",     href: "/badges",      active: true  },
-];
 
 export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState("");
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [srStats, setSrStats] = useState<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [dueCount, setDueCount] = useState(0);
-  const [userWords, setUserWords] = useState<UserWordStatus[]>([]);
-  const [activeTab, setActiveTab] = useState<"overview" | "memory">("overview");
   const [loading, setLoading] = useState(true);
   const [topEntries, setTopEntries] = useState<LeaderboardEntry[]>([]);
   const router = useRouter();
@@ -63,16 +46,16 @@ export default function DashboardPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) { router.push("/login"); return; }
       setUserEmail(user.email || "");
-      const [prog, stats, due, words, lb] = await Promise.all([
+      const [prog, stats, due, lb] = await Promise.all([
         getProgress(user.uid), getSRStats(user.uid),
-        getDueWords(user.uid), getUserWordStatuses(user.uid),
+        getDueWords(user.uid, 50),
         fetchLeaderboard(),
       ]);
-      setProgress(prog); setSrStats(stats);
-      setDueCount(due.length); setUserWords(words);
+      setProgress(prog); 
+      setSrStats(stats);
+      setDueCount(due.length); 
       setTopEntries(lb.slice(0, 3));
       setLoading(false);
-
     });
     return () => unsubscribe();
   }, [router]);
@@ -81,9 +64,6 @@ export default function DashboardPage() {
   const maxSR = Math.max(...Object.values(srStats), 1);
   const todayStr = new Date().toISOString().split("T")[0];
   const todayCount = progress?.dailyHistory?.[todayStr] || 0;
-  const groupedWords = [1, 2, 3, 4, 5].map((level) => ({
-    level, words: userWords.filter((w) => w.srLevel === level),
-  }));
 
   if (loading) return (
     <div className="min-h-[100dvh] bg-page flex items-center justify-center">
@@ -96,258 +76,166 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="min-h-[100dvh] bg-page">
+    <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
       <Navbar userEmail={userEmail} />
 
       <div className="max-w-3xl mx-auto px-4 py-6">
 
-        {/* Greeting */}
-        <div className="mb-6 animate-fade-up">
-          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
-            こんにちは, {userEmail.split("@")[0]} 👋
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Hôm nay học {todayCount} từ · Streak {progress?.streak || 0} ngày 🔥
-          </p>
+        {/* Greeting & Streak */}
+        <div className="mb-6 animate-fade-up flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
+              こんにちは, {userEmail.split("@")[0]} 👋
+            </h1>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              Hôm nay học {todayCount} từ · Tổng tích luỹ {totalLearned} từ
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-500 font-bold text-sm">
+            <Flame size={18} className="fill-orange-500 animate-pulse" />
+            <span>{progress?.streak || 0} ngày</span>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 animate-fade-up">
-          {(["overview", "memory"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-spring
-                ${activeTab === tab
-                  ? "text-[#0d1f14] shadow-green-sm"
-                  : "bg-surface-2 hover:bg-surface-3"
-                }`}
-              style={activeTab === tab ? { background: "var(--primary)" } : { color: "var(--text-muted)" }}
-            >
-              {tab === "overview" ? "Tổng quan" : "Kho từ theo mức nhớ"}
-            </button>
+        {/* TRỌNG TÂM: MÀN HÌNH ÔN TẬP MẶC ĐỊNH (REVIEW DASHBOARD) */}
+        <div className="card p-6 mb-6 animate-fade-up border-2 border-[var(--primary)]/30 relative overflow-hidden"
+             style={{ 
+               background: "linear-gradient(135deg, var(--surface), rgba(34, 197, 94, 0.05))"
+             }}>
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <span className="text-xs uppercase font-bold tracking-wider text-[var(--primary)] px-2.5 py-1 rounded-full bg-[var(--primary)]/10">
+                Lịch trình hôm nay
+              </span>
+              <h2 className="text-xl font-bold mt-3 mb-1" style={{ color: "var(--text)" }}>
+                {dueCount > 0 ? "Đến giờ ôn tập từ vựng!" : "Bạn đã hoàn thành ôn tập!"}
+              </h2>
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                {dueCount > 0 
+                  ? `Có ${dueCount} từ vựng Spaced Repetition đến thời điểm ôn tập.`
+                  : "Tuyệt vời! Hiện tại không có từ vựng nào cần ôn tập. Hãy học thêm từ mới nhé."
+                }
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {dueCount > 0 ? (
+                <Link href="/review" 
+                      className="btn btn-primary px-6 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm shadow-green active:scale-95 transition-all">
+                  <Play size={16} fill="currentColor" />
+                  Ôn ngay ({dueCount} từ)
+                </Link>
+              ) : (
+                <Link href="/learn" 
+                      className="btn btn-primary px-6 py-3 rounded-2xl flex items-center gap-2 font-bold text-sm active:scale-95 transition-all">
+                  Học từ mới
+                  <ArrowRight size={16} />
+                </Link>
+              )}
+            </div>
+          </div>
+
+          {/* Trang trí góc thẻ */}
+          <div className="absolute right-[-20px] bottom-[-20px] text-[var(--primary)]/10 pointer-events-none">
+            <Clock size={120} />
+          </div>
+        </div>
+
+        {/* Bảng phân bố mức ghi nhớ (SR Chart) */}
+        <div className="card p-5 mb-6 animate-fade-up">
+          <h2 className="font-semibold text-sm mb-0.5" style={{ color: "var(--text)" }}>
+            Phân bố mức ghi nhớ
+          </h2>
+          <p className="text-[11px] mb-4" style={{ color: "var(--text-muted)" }}>
+            Mức cao hơn = nhớ lâu hơn
+          </p>
+          <div className="flex items-end justify-around gap-2 h-28">
+            {[1, 2, 3, 4, 5].map((level) => {
+              const count = srStats[level] || 0;
+              const pct = maxSR > 0 ? (count / maxSR) * 100 : 0;
+              return (
+                <div key={level} className="flex flex-col items-center gap-1.5 flex-1">
+                  <span className="tabular text-[10px] font-bold" style={{ color: "var(--text-muted)" }}>
+                    {count > 0 ? count : ""}
+                  </span>
+                  <div className="w-full flex items-end" style={{ height: "60px" }}>
+                    <div
+                      className="w-full rounded-t-lg transition-all duration-700 ease-spring"
+                      style={{
+                        height: count === 0 ? "4px" : `${Math.max(pct, 8)}%`,
+                        background: count === 0
+                          ? "var(--surface-3)"
+                          : `linear-gradient(180deg, ${srColors[level]}, ${srColors[level]}88)`,
+                      }}
+                    />
+                  </div>
+                  <div className="text-center mt-1">
+                    <div className="text-[10px] font-bold" style={{ color: "var(--text)" }}>
+                      Mức {level}
+                    </div>
+                    <div className="text-[8px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                      {srLabels[level]}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-3 gap-3 mb-6 animate-fade-up delay-75">
+          {[
+            { icon: BookCheck, value: totalLearned, label: "Đã học", color: "#3b82f6", bg: "rgba(59,130,246,0.08)" },
+            { icon: Sparkles,  value: todayCount,   label: "Hôm nay", color: "var(--primary)", bg: "var(--primary-glow)" },
+            { icon: Clock,     value: dueCount,     label: "Đến hạn", color: "#ef4444", bg: "rgba(239,68,68,0.08)" },
+          ].map(({ icon: Icon, value, label, color, bg }) => (
+            <div key={label} className="card p-4 flex flex-col items-center justify-center text-center">
+              <div className="w-9 h-9 rounded-2xl flex items-center justify-center mb-2" style={{ background: bg }}>
+                <Icon className="w-5 h-5" style={{ color }} />
+              </div>
+              <div className="tabular text-lg font-bold" style={{ color }}>{value}</div>
+              <div className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: "var(--text-faint)" }}>{label}</div>
+            </div>
           ))}
         </div>
 
-        {activeTab === "overview" ? (
-          <>
-            <div className="grid grid-cols-4 gap-3 mb-6 animate-fade-up">
-              {[
-                { icon: Flame,        value: progress?.streak || 0, label: "Streak", color: "#f97316", bg: "rgba(249,115,22,0.1)" },
-                { icon: BookCheck,    value: totalLearned,           label: "Đã học",  color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
-                { icon: Sparkles,     value: todayCount,              label: "Hôm nay", color: "var(--primary)", bg: "var(--primary-glow)" },
-                { icon: Clock,        value: dueCount,                label: "Cần ôn",  color: "#ef4444", bg: "rgba(239,68,68,0.1)" },
-              ].map(({ icon: Icon, value, label, color, bg }) => (
-                <div key={label} className="card p-4 flex flex-col items-center justify-center">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2" style={{ background: bg }}>
-                    <Icon className="w-5 h-5" style={{ color }} />
-                  </div>
-                  <div className="tabular text-xl font-bold" style={{ color }}>{value}</div>
-                  <div className="text-[10px] uppercase font-semibold tracking-wider mt-1" style={{ color: "var(--text-faint)" }}>{label}</div>
-                </div>
-              ))}
+        {/* Mini Leaderboard */}
+        {topEntries.length > 0 && (
+          <div className="card p-5 mb-6 animate-fade-up delay-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-semibold text-sm" style={{ color: "var(--text)" }}>🏆 Bảng Xếp Hạng</h2>
+                <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>Top học viên tuần này</p>
+              </div>
+              <Link href="/leaderboard" className="text-xs font-semibold px-3 py-1 rounded-xl"
+                style={{ color: "var(--primary)", background: "var(--primary-glow)" }}>
+                Xem thêm
+              </Link>
             </div>
-
-            {/* SR Chart */}
-            <div className="card p-6 mb-6 animate-fade-up delay-75">
-              <h2 className="font-semibold mb-0.5" style={{ color: "var(--text)" }}>
-                Phân bố mức ghi nhớ
-              </h2>
-              <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-                Spaced Repetition — mức cao hơn = nhớ lâu hơn
-              </p>
-              <div className="flex items-end justify-around gap-3 h-32">
-                {[1, 2, 3, 4, 5].map((level) => {
-                  const count = srStats[level] || 0;
-                  const pct = maxSR > 0 ? (count / maxSR) * 100 : 0;
-                  return (
-                    <div key={level} className="flex flex-col items-center gap-2 flex-1">
-                      <span className="tabular text-xs font-bold" style={{ color: "var(--text-muted)" }}>
-                        {count > 0 ? count : ""}
-                      </span>
-                      <div className="w-full flex items-end" style={{ height: "80px" }}>
-                        <div
-                          className="w-full rounded-t-xl transition-all duration-700 ease-spring"
-                          style={{
-                            height: count === 0 ? "4px" : `${Math.max(pct, 8)}%`,
-                            background: count === 0
-                              ? "var(--surface-3)"
-                              : `linear-gradient(180deg, ${srColors[level]}, ${srColors[level]}88)`,
-                          }}
-                        />
-                      </div>
-                      <div className="text-center">
-                        <div className="text-xs font-semibold" style={{ color: "var(--text)" }}>
-                          Mức {level}
-                        </div>
-                        <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                          {srLabels[level]}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 pt-4 flex justify-between text-xs" style={{ borderTop: "1px solid var(--border-color)", color: "var(--text-muted)" }}>
-                <span>Đã học: <strong style={{ color: "var(--text)" }}>{totalLearned} từ</strong></span>
-                <span>Còn lại: <strong style={{ color: "var(--text)" }}>{968 - totalLearned} từ</strong></span>
-              </div>
-            </div>
-
-            {/* Mini Leaderboard */}
-            {topEntries.length > 0 && (
-              <div className="card p-5 mb-6 animate-fade-up delay-100">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="font-semibold" style={{ color: "var(--text)" }}>🏆 Top Học Viên</h2>
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>Xếp hạng theo điểm XP</p>
-                  </div>
-                  <Link href="/leaderboard" className="text-xs font-medium px-3 py-1 rounded-lg"
-                    style={{ color: "var(--primary)", background: "var(--primary-glow)" }}>
-                    Xem tất cả
-                  </Link>
-                </div>
-                <div className="space-y-2">
-                  {topEntries.map((entry, idx) => {
-                    const medals = ["🥇","🥈","🥉"];
-                    return (
-                      <div key={entry.uid} className="flex items-center gap-3 rounded-xl px-3 py-2"
-                        style={{ background: "var(--surface-2)" }}>
-                        <span className="text-lg w-7 text-center">{medals[idx]}</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>
-                            {entry.displayName}
-                          </span>
-                          <div className="flex gap-1 mt-0.5">
-                            {entry.badges.slice(0,3).map(bId => (
-                              <span key={bId} title={BADGES[bId].name} className="text-xs">{BADGES[bId].emoji}</span>
-                            ))}
-                          </div>
-                        </div>
-                        <span className="font-bold tabular text-sm" style={{ color: "var(--primary)" }}>
-                          {entry.xp.toLocaleString()} XP
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Nav tiles */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-fade-up delay-150">
-              {navTiles.map((tile, i) => {
-                const isDue = tile.href === "/review" && dueCount > 0;
-                const sub = tile.href === "/review"
-                  ? (dueCount > 0 ? `${dueCount} từ cần ôn` : "Chưa có từ cần ôn")
-                  : tile.sub;
-                const Icon = tile.icon;
-
+            <div className="space-y-2">
+              {topEntries.map((entry, idx) => {
+                const medals = ["🥇", "🥈", "🥉"];
                 return (
-                  <Link
-                    key={tile.label}
-                    href={tile.href}
-                    className={`card p-5 flex flex-col justify-between transition-all duration-200 ease-spring animate-fade-up
-                      ${!tile.active ? "opacity-40 pointer-events-none" : ""}
-                      ${isDue ? "ring-1" : ""}
-                    `}
-                    style={{
-                      animationDelay: `${i * 60}ms`,
-                      minHeight: "130px",
-                      ...(isDue ? {
-                        background: "var(--primary)",
-                        ringColor: "var(--primary)",
-                        borderColor: "var(--primary)",
-                      } : {}),
-                    }}
-                  >
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" 
-                      style={{ background: isDue ? "rgba(13,31,20,0.1)" : "var(--surface-2)" }}>
-                      <Icon className="w-5 h-5" style={{ color: isDue ? "#0d1f14" : "var(--primary)" }} />
+                  <div key={entry.uid} className="flex items-center gap-3 rounded-xl px-3 py-2"
+                    style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}>
+                    <span className="text-base w-6 text-center">{medals[idx]}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-xs" style={{ color: "var(--text)" }}>
+                        {entry.displayName}
+                      </span>
                     </div>
-                    <div>
-                      <div className="font-semibold text-sm" style={{ color: isDue ? "#0d1f14" : "var(--text)" }}>
-                        {tile.label}
-                      </div>
-                      <div className="text-xs mt-0.5" style={{ color: isDue ? "#0d5a22" : "var(--text-muted)" }}>
-                        {sub}
-                      </div>
-                    </div>
-                  </Link>
+                    <span className="font-bold tabular text-xs" style={{ color: "var(--primary)" }}>
+                      {entry.xp.toLocaleString()} XP
+                    </span>
+                  </div>
                 );
               })}
             </div>
-          </>
-        ) : (
-          /* Memory tab */
-          <div className="card p-6 animate-fade-up">
-            <h2 className="font-semibold mb-1" style={{ color: "var(--text)" }}>
-              Kho từ theo mức nhớ
-            </h2>
-            <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-              Tất cả từ đã học hoặc lưu từ từ điển
-            </p>
-            <div className="space-y-3">
-              {groupedWords.map(({ level, words }) => (
-                <div key={level} className="rounded-2xl p-4"
-                  style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <span className="font-semibold text-sm" style={{ color: "var(--text)" }}>
-                        Mức {level}
-                      </span>
-                      <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>
-                        ({srLabels[level]})
-                      </span>
-                    </div>
-                    <span
-                      className="badge"
-                      style={{ background: srBg[level], color: srColors[level] }}
-                    >
-                      {words.length} từ
-                    </span>
-                  </div>
-                  {words.length === 0 ? (
-                    <p className="text-sm" style={{ color: "var(--text-faint)" }}>
-                      Chưa có từ nào ở mức này
-                    </p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {words.slice(0, 5).map((word) => (
-                        <div
-                          key={word.id}
-                          className="flex items-center justify-between rounded-xl px-3 py-2"
-                          style={{ background: "var(--surface)" }}
-                        >
-                          <div>
-                            <span className="font-jp font-medium text-sm" style={{ color: "var(--text)" }}>
-                              {word.word}
-                            </span>
-                            <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>
-                              {word.reading} · {word.meaning}
-                            </span>
-                          </div>
-                          <span className="badge"
-                            style={{
-                              background: word.status === "mastered" ? "rgba(34,197,94,0.1)" : "rgba(249,115,22,0.1)",
-                              color: word.status === "mastered" ? "#22c55e" : "#f97316",
-                            }}>
-                            {word.status === "mastered" ? "Thuộc" : "Đang học"}
-                          </span>
-                        </div>
-                      ))}
-                      {words.length > 5 && (
-                        <p className="text-xs text-center pt-1" style={{ color: "var(--text-faint)" }}>
-                          +{words.length - 5} từ khác
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
         )}
+
       </div>
 
       <NotificationSetup />

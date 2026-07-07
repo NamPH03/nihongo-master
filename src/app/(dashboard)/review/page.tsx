@@ -268,7 +268,7 @@ export default function ReviewPage() {
 
   return (
     <div className="min-h-[100dvh] bg-page">
-      <Navbar userEmail="" showBackToDashboard />
+      <Navbar userEmail="" />
 
       <div className="max-w-md mx-auto px-4 py-6">
 

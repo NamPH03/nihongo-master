@@ -46,7 +46,7 @@ export default function DictionaryPage() {
 
   return (
     <div className="min-h-[100dvh] bg-page font-sans">
-      <Navbar userEmail={userEmail} showBackToDashboard />
+      <Navbar userEmail={userEmail} />
 
       <div className="max-w-2xl mx-auto px-4 py-6">
 

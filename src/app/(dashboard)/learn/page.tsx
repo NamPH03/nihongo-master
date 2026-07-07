@@ -238,7 +238,7 @@ export default function LearnPage() {
 
   return (
     <div className="min-h-[100dvh] bg-page font-sans">
-      <Navbar userEmail="" showBackToDashboard />
+      <Navbar userEmail="" />
 
       <div className="max-w-md mx-auto px-4 py-6">
 
