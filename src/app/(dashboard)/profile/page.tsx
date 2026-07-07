@@ -164,6 +164,7 @@ export default function ProfilePage() {
             className="group relative w-20 h-20 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center mb-4 cursor-pointer overflow-hidden transition-all active:scale-95"
           >
             {photoURL ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <User size={36} className="text-[var(--primary)]" />

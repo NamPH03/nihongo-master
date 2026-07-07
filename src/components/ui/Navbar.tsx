@@ -26,17 +26,15 @@ interface NavbarProps {
   userEmail?: string;
 }
 
-export default function Navbar({ userEmail: propEmail }: NavbarProps) {
+export default function Navbar({}: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [photoURL, setPhotoURL] = useState<string>("");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setCurrentUserEmail(user.email || "User");
         setIsLoggedIn(true);
         
         // Lấy photoURL từ Firestore
@@ -51,7 +49,6 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
           console.error("Lỗi lấy photoURL trong Navbar:", e);
         }
       } else {
-        setCurrentUserEmail("");
         setIsLoggedIn(false);
         setPhotoURL("");
       }
@@ -74,19 +71,26 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
     { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
   ];
 
-  // Menu dưới chân trên Mobile (Đúng 5 cột theo yêu cầu, luôn luôn xuất hiện)
+  // Menu dưới chân trên Mobile (6 cột đầy đủ tính năng)
   const mobileLinks = [
     { href: "/dictionary",   label: "Từ điển",    icon: Search },
     { href: "/learn",        label: "Học mới",    icon: Sparkles },
     { href: "/dashboard",    label: "Ôn tập",     icon: Repeat },
+    { href: "/vocabulary",   label: "Kho từ",     icon: BookOpen },
     { href: "/leaderboard",  label: "Xếp hạng",   icon: Trophy },
     { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
   ];
 
   return (
     <>
-      {/* Top Navbar */}
-      <nav className="navbar border-b sticky top-0 z-40" style={{ borderColor: "var(--border-color)", background: "var(--surface)", backdropFilter: "blur(8px)" }}>
+      {/* Top Navbar: Thêm padding-top safe-area cho iPhone để phủ kín status bar */}
+      <nav className="navbar border-b sticky top-0 z-40" 
+           style={{ 
+             borderColor: "var(--border-color)", 
+             background: "var(--surface)", 
+             backdropFilter: "blur(8px)",
+             paddingTop: "calc(env(safe-area-inset-top) + 2px)", // Phủ kín status bar trên iPhone
+           }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
 
           {/* Logo */}
@@ -139,6 +143,7 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
                 title="Thông tin tài khoản"
               >
                 {photoURL ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
                   <User className="w-5 h-5" />
@@ -207,4 +212,3 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
     </>
   );
 }
-
