@@ -13,8 +13,12 @@ function getAdminApp(): App {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
   if (!privateKey) throw new Error('FIREBASE_PRIVATE_KEY is not set');
 
-  // Vercel lưu key dưới dạng \n literal — cần convert sang newline thật
-  const formattedKey = privateKey.replace(/\\n/g, '\n');
+  // Vercel có thể lưu key bọc trong dấu nháy kép hoặc bị encode \n
+  let formattedKey = privateKey;
+  if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
+    formattedKey = formattedKey.slice(1, -1);
+  }
+  formattedKey = formattedKey.replace(/\\n/g, '\n');
 
   return initializeApp(
     {
