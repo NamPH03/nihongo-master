@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { registerPushNotifications } from '@/lib/fcm';
-import { BellRing, BellOff, X } from 'lucide-react';
+import { BellRing, X } from 'lucide-react';
 
 export default function NotificationSetup() {
   const [show, setShow] = useState(false);
