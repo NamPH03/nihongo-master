@@ -1,24 +1,29 @@
 "use client";
 
 // src/app/(dashboard)/profile/page.tsx
-// Trang thông tin cá nhân của người dùng
+// Trang thông tin cá nhân của người dùng hỗ trợ upload ảnh đại diện (avatar)
 
-import { useEffect, useState } from "react";
-import { auth, db } from "@/lib/firebase";
+import { useEffect, useState, useRef } from "react";
+import { auth, db, storage } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { getProgress, ProgressData } from "@/lib/progress";
-import { User, Settings, Shield, Award, Edit3, Save } from "lucide-react";
+import { User, Settings, Shield, Award, Edit3, Save, Camera } from "lucide-react";
 
 export default function ProfilePage() {
   const [userEmail, setUserEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [photoURL, setPhotoURL] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -29,7 +34,7 @@ export default function ProfilePage() {
       }
       setUserEmail(user.email || "");
 
-      // Lấy thông tin hiển thị của user từ bảng leaderboard/users
+      // Lấy thông tin từ Firestore users/{uid}
       const userDocRef = doc(db, "users", user.uid);
       const [userSnap, prog] = await Promise.all([
         getDoc(userDocRef),
@@ -37,7 +42,9 @@ export default function ProfilePage() {
       ]);
 
       if (userSnap.exists()) {
-        setDisplayName(userSnap.data().displayName || user.email?.split("@")[0] || "");
+        const userData = userSnap.data();
+        setDisplayName(userData.displayName || user.email?.split("@")[0] || "");
+        setPhotoURL(userData.photoURL || "");
       } else {
         setDisplayName(user.email?.split("@")[0] || "");
       }
@@ -48,7 +55,7 @@ export default function ProfilePage() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleSave = async () => {
+  const handleSaveName = async () => {
     const user = auth.currentUser;
     if (!user || !displayName.trim()) return;
 
@@ -62,6 +69,51 @@ export default function ProfilePage() {
       console.error("Lỗi cập nhật tên:", e);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Xử lý upload ảnh đại diện lên Firebase Storage
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const user = auth.currentUser;
+    if (!file || !user) return;
+
+    // Chỉ nhận các định dạng ảnh
+    if (!file.type.startsWith("image/")) {
+      alert("Vui lòng chọn file hình ảnh hợp lệ!");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // 1. Tạo Storage reference: avatars/{uid}
+      const fileRef = ref(storage, `avatars/${user.uid}`);
+      
+      // 2. Upload file lên Storage
+      const snapshot = await uploadBytes(fileRef, file);
+      
+      // 3. Lấy Download URL
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      
+      // 4. Lưu Download URL vào Firestore document users/{uid}
+      await updateDoc(doc(db, "users", user.uid), {
+        photoURL: downloadURL
+      });
+      
+      // 5. Cập nhật state UI
+      setPhotoURL(downloadURL);
+      
+      // Refresh trang để cập nhật ảnh trên Navbar đồng bộ
+      window.location.reload();
+    } catch (err) {
+      console.error("Lỗi tải ảnh lên Firebase:", err);
+      alert("Có lỗi xảy ra khi tải ảnh lên, vui lòng thử lại!");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -83,7 +135,7 @@ export default function ProfilePage() {
         
         {/* Tiêu đề trang */}
         <div className="mb-6 animate-fade-up">
-          <h1 className="text-2xl font-bold animate-fade-up" style={{ color: "var(--text)" }}>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
             Thông tin cá nhân
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
@@ -97,12 +149,39 @@ export default function ProfilePage() {
                background: "linear-gradient(135deg, var(--surface), rgba(34, 197, 94, 0.02))"
              }}>
           
-          {/* Avatar dạng hình tròn */}
-          <div className="w-20 h-20 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center mb-4">
-            <User size={36} className="text-[var(--primary)]" />
+          {/* File Input Ẩn */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+            accept="image/*"
+          />
+
+          {/* Avatar dạng hình tròn + Hover để đổi ảnh */}
+          <div 
+            onClick={handleAvatarClick}
+            className="group relative w-20 h-20 rounded-full bg-[var(--primary)]/10 border border-[var(--primary)]/20 flex items-center justify-center mb-4 cursor-pointer overflow-hidden transition-all active:scale-95"
+          >
+            {photoURL ? (
+              <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <User size={36} className="text-[var(--primary)]" />
+            )}
+            
+            {/* Overlay hover đổi ảnh */}
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <Camera size={18} className="text-white" />
+            </div>
+            
+            {/* Hiệu ứng loading khi đang upload */}
+            {uploading && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                <div className="w-5 h-5 rounded-full border-2 border-t-transparent border-[var(--primary)] animate-spin" />
+              </div>
+            )}
           </div>
 
-          {/* Email tài khoản */}
           <span className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-faint)] px-2.5 py-0.5 rounded-full bg-neutral-500/10 mb-2">
             Học viên
           </span>
@@ -120,7 +199,7 @@ export default function ProfilePage() {
                   autoFocus
                 />
                 <button 
-                  onClick={handleSave} 
+                  onClick={handleSaveName} 
                   disabled={saving}
                   className="btn btn-primary px-3 rounded-xl flex items-center justify-center"
                 >

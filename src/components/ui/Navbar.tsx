@@ -31,25 +31,33 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
   const router = useRouter();
   const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [photoURL, setPhotoURL] = useState<string>("");
 
   useEffect(() => {
-    if (propEmail) {
-      setCurrentUserEmail(propEmail);
-      setIsLoggedIn(true);
-      return;
-    }
-
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUserEmail(user.email || "User");
         setIsLoggedIn(true);
+        
+        // Lấy photoURL từ Firestore
+        try {
+          const { doc, getDoc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          const userSnap = await getDoc(doc(db, "users", user.uid));
+          if (userSnap.exists()) {
+            setPhotoURL(userSnap.data().photoURL || "");
+          }
+        } catch (e) {
+          console.error("Lỗi lấy photoURL trong Navbar:", e);
+        }
       } else {
         setCurrentUserEmail("");
         setIsLoggedIn(false);
+        setPhotoURL("");
       }
     });
     return () => unsub();
-  }, [propEmail]);
+  }, []);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -122,31 +130,30 @@ export default function Navbar({ userEmail: propEmail }: NavbarProps) {
           <div className="flex items-center gap-2">
             <ThemeToggle />
 
-            {/* Nút thông tin tài khoản (Chỉ hiển thị khi đã đăng nhập) */}
+            {/* Nút thông tin tài khoản: Ưu tiên hiển thị Avatar thật của user */}
             {isLoggedIn && (
               <Link 
                 href="/profile"
-                className={`p-2 rounded-xl transition-all duration-200 hover:bg-[var(--surface-2)] active:scale-95 flex items-center justify-center
-                  ${pathname === '/profile' ? 'text-[var(--primary)] bg-[var(--primary)]/10' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+                className={`w-9 h-9 rounded-xl overflow-hidden transition-all duration-200 hover:bg-[var(--surface-2)] active:scale-95 flex items-center justify-center border
+                  ${pathname === '/profile' ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]' : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'}`}
                 title="Thông tin tài khoản"
               >
-                <User className="w-5 h-5" />
+                {photoURL ? (
+                  <img src={photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-5 h-5" />
+                )}
               </Link>
             )}
 
             {isLoggedIn && (
-              <>
-                <span className="hidden sm:block text-xs px-2" style={{ color: "var(--text-faint)" }}>
-                  {currentUserEmail.split("@")[0]}
-                </span>
-                <button
-                  onClick={handleLogout}
-                  className="btn btn-ghost text-xs px-2.5 py-1.5 flex items-center gap-1 text-red-500 hover:bg-red-500/10 rounded-xl"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Đăng xuất</span>
-                </button>
-              </>
+              <button
+                onClick={handleLogout}
+                className="btn btn-ghost text-xs px-2.5 py-1.5 flex items-center gap-1 text-red-500 hover:bg-red-500/10 rounded-xl"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Đăng xuất</span>
+              </button>
             )}
           </div>
 
