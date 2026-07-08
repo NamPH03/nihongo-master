@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { login } from "@/lib/auth";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import GoogleSignInButton from "@/components/ui/GoogleSignInButton";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -20,43 +19,31 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      // Upsert profile for leaderboard (merge: true so we don't overwrite existing data)
-      await setDoc(doc(db, "users", cred.user.uid), {
-        email: cred.user.email,
-        displayName: email.split("@")[0],
-      }, { merge: true });
+
+    const result = await login(email, password);
+    setLoading(false);
+
+    if (result.success) {
       router.push("/dashboard");
-    } catch (err: unknown) {
-      const e = err as { code?: string };
-      if (e.code === "auth/user-not-found") setError("Email này chưa được đăng ký.");
-      else if (e.code === "auth/wrong-password") setError("Mật khẩu không đúng.");
-      else if (e.code === "auth/invalid-credential") setError("Email hoặc mật khẩu không đúng.");
-      else setError("Có lỗi xảy ra, thử lại nhé.");
-    } finally {
-      setLoading(false);
+    } else {
+      setError(result.error);
     }
   };
 
   return (
     <main className="min-h-[100dvh] bg-page flex items-center justify-center px-4 relative overflow-hidden">
 
-      {/* Ambient */}
       <div className="pointer-events-none fixed inset-0 -z-0">
         <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[500px] h-[400px] rounded-full blur-3xl opacity-15"
           style={{ background: "radial-gradient(circle, var(--primary-light), transparent 70%)" }} />
       </div>
 
-      {/* Theme toggle top-right */}
       <div className="fixed top-4 right-4 z-50">
         <ThemeToggle />
       </div>
 
-      {/* Card */}
       <div className="w-full max-w-[400px] card p-8 animate-scale-in relative z-10">
 
-        {/* Logo */}
         <div className="text-center mb-7">
           <Link href="/" className="inline-flex items-center gap-2 mb-5">
             <Image src="/icon-192.png" alt="Logo" width={32} height={32} className="rounded-full object-cover" />
@@ -72,7 +59,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mb-4 px-4 py-3 rounded-xl text-sm"
             style={{
@@ -83,6 +69,15 @@ export default function LoginPage() {
             {error}
           </div>
         )}
+
+        {/* Đăng nhập Google */}
+        <GoogleSignInButton onError={setError} />
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>hoặc</span>
+          <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+        </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
           <div>
@@ -100,9 +95,18 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
-              Mật khẩu
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+                Mật khẩu
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs hover:underline"
+                style={{ color: "var(--primary)" }}
+              >
+                Quên mật khẩu?
+              </Link>
+            </div>
             <input
               type="password"
               value={password}
@@ -119,7 +123,7 @@ export default function LoginPage() {
             className="btn btn-primary w-full py-3 mt-1 rounded-xl text-base"
           >
             {loading ? (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2 justify-center">
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>

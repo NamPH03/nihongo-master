@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { register } from "@/lib/auth";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import GoogleSignInButton from "@/components/ui/GoogleSignInButton";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -20,25 +19,15 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (password !== confirmPassword) { setError("Mật khẩu xác nhận không khớp."); return; }
-    if (password.length < 6) { setError("Mật khẩu phải có ít nhất 6 ký tự."); return; }
     setLoading(true);
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // Save profile to Firestore for leaderboard
-      await setDoc(doc(db, "users", cred.user.uid), {
-        email: cred.user.email,
-        displayName: email.split("@")[0],
-        createdAt: new Date().toISOString(),
-      }, { merge: true });
+
+    const result = await register(email, password, confirmPassword);
+    setLoading(false);
+
+    if (result.success) {
       router.push("/dashboard");
-    } catch (err: unknown) {
-      const e = err as { code?: string };
-      if (e.code === "auth/email-already-in-use") setError("Email này đã được đăng ký.");
-      else if (e.code === "auth/invalid-email") setError("Email không hợp lệ.");
-      else setError("Có lỗi xảy ra, thử lại nhé.");
-    } finally {
-      setLoading(false);
+    } else {
+      setError(result.error);
     }
   };
 
@@ -82,6 +71,14 @@ export default function RegisterPage() {
           </div>
         )}
 
+        <GoogleSignInButton onError={setError} />
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>hoặc</span>
+          <div className="flex-1 h-px" style={{ background: "var(--border-color)" }} />
+        </div>
+
         <form onSubmit={handleRegister} className="flex flex-col gap-4">
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
@@ -112,7 +109,7 @@ export default function RegisterPage() {
             className="btn btn-primary w-full py-3 mt-1 rounded-xl text-base"
           >
             {loading ? (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2 justify-center">
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
