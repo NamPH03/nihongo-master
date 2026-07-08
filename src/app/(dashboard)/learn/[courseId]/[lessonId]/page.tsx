@@ -69,7 +69,8 @@ export default function LessonPage() {
 
         snap.docs.forEach((doc) => {
           const data = doc.data() as Vocabulary;
-          dataWords.push({ id: doc.id, ...data });
+          const { id, ...rest } = data;
+          dataWords.push({ id: doc.id, ...rest });
           if (!firstCourseName) firstCourseName = data.courseName || courseId;
           if (!firstLessonTitle) firstLessonTitle = data.lessonTitle || lessonId;
         });
@@ -118,9 +119,6 @@ export default function LessonPage() {
           <StudySession
             words={words}
             courseId={courseId}
-            courseName={courseName}
-            lessonId={lessonId}
-            lessonTitle={lessonTitle}
           />
         )}
       </div>
