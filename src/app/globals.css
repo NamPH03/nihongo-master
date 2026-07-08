@@ -350,6 +350,16 @@ input::placeholder, textarea::placeholder {
 }
 .flip-card-back { transform: rotateY(180deg); }
 
+.flip-card .card {
+  transition: none !important;
+  height: 100%;
+}
+
+.flip-card .card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 /* ============================================================
    NOISE OVERLAY (premium texture)
    ============================================================ */

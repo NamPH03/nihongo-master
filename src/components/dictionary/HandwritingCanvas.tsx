@@ -178,7 +178,7 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
         </button>
       </div>
 
-      <div className="relative w-full h-48 rounded-xl overflow-hidden" style={{ background: "var(--surface-2)", border: "1px dashed var(--border-strong)" }}>
+      <div className="relative w-full max-w-[360px] mx-auto aspect-square rounded-xl overflow-hidden" style={{ background: "var(--surface-2)", border: "1px dashed var(--border-strong)" }}>
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}

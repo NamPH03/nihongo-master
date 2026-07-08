@@ -154,8 +154,8 @@ export default function FlashcardPage() {
             {/* Thẻ Flashcard */}
             <div
               onClick={() => setIsFlipped(!isFlipped)}
-              className="flip-card cursor-pointer select-none"
-              style={{ height: "380px" }}
+              className="flip-card cursor-pointer select-none mx-auto"
+              style={{ width: "100%", maxWidth: "380px", aspectRatio: "1 / 1" }}
             >
               <div className={`flip-card-inner ${isFlipped ? "flipped" : ""}`}>
                 {/* MẶT TRƯỚC — Câu ví dụ */}
