@@ -26,8 +26,8 @@ type Vocabulary = {
 export default function LessonPage() {
   const params = useParams();
   const router = useRouter();
-  const courseId = params?.courseId || "";
-  const lessonId = params?.lessonId || "";
+  const courseId = Array.isArray(params?.courseId) ? params?.courseId[0] || "" : params?.courseId || "";
+  const lessonId = Array.isArray(params?.lessonId) ? params?.lessonId[0] || "" : params?.lessonId || "";
   const [words, setWords] = useState<Vocabulary[]>([]);
   const [lessonTitle, setLessonTitle] = useState("");
   const [loading, setLoading] = useState(true);

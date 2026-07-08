@@ -331,7 +331,7 @@ export default function StudySession({
                     className="font-jp font-bold leading-tight max-w-full break-words"
                     style={{
                       color: "var(--text)",
-                      fontSize: "clamp(2rem, 7vw, 4.5rem)",
+                      fontSize: "clamp(1.8rem, 6vw, 3.8rem)",
                       lineHeight: 1.05,
                       whiteSpace: "pre-wrap",
                     }}
@@ -350,8 +350,8 @@ export default function StudySession({
                     className="font-bold mb-3 max-w-full break-words"
                     style={{
                       color: "var(--text)",
-                      fontSize: "clamp(2rem, 6vw, 3rem)",
-                      lineHeight: 1.05,
+                      fontSize: "clamp(1.6rem, 5.5vw, 2.6rem)",
+                      lineHeight: 1.1,
                     }}
                   >
                     {currentWord.meaning}
