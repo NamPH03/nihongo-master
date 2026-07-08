@@ -16,7 +16,7 @@ type LessonSummary = {
 
 export default function CoursePage() {
   const params = useParams();
-  const courseId = params?.courseId || "";
+  const courseId = Array.isArray(params?.courseId) ? params?.courseId[0] || "" : params?.courseId || "";
   const [courseName, setCourseName] = useState("");
   const [lessons, setLessons] = useState<LessonSummary[]>([]);
   const [loading, setLoading] = useState(true);
