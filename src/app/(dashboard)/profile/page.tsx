@@ -4,14 +4,15 @@
 // Trang thông tin cá nhân của người dùng hỗ trợ upload ảnh đại diện (avatar)
 
 import { useEffect, useState, useRef } from "react";
-import { auth, db, storage } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { db, storage } from "@/lib/firebase";
+import { onAuthChange, changePassword, hasPasswordProvider } from "@/lib/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { getProgress, ProgressData } from "@/lib/progress";
-import { User, Settings, Shield, Award, Edit3, Save, Camera } from "lucide-react";
+import { User, Settings, Shield, Award, Edit3, Save, Camera, ChevronDown, ChevronUp, Lock } from "lucide-react";
+import type { User as FirebaseUser } from "firebase/auth";
 
 export default function ProfilePage() {
   const [userEmail, setUserEmail] = useState("");
@@ -22,16 +23,27 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+
+  // Đổi mật khẩu
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthChange(async (user) => {
       if (!user) {
         router.push("/login");
         return;
       }
+      setCurrentUser(user);
       setUserEmail(user.email || "");
 
       // Lấy thông tin từ Firestore users/{uid}
@@ -56,12 +68,11 @@ export default function ProfilePage() {
   }, [router]);
 
   const handleSaveName = async () => {
-    const user = auth.currentUser;
-    if (!user || !displayName.trim()) return;
+    if (!currentUser || !displayName.trim()) return;
 
     setSaving(true);
     try {
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateDoc(doc(db, "users", currentUser.uid), {
         displayName: displayName.trim()
       });
       setIsEditing(false);
@@ -79,8 +90,7 @@ export default function ProfilePage() {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    const user = auth.currentUser;
-    if (!file || !user) return;
+    if (!file || !currentUser) return;
 
     // Chỉ nhận các định dạng ảnh
     if (!file.type.startsWith("image/")) {
@@ -91,7 +101,7 @@ export default function ProfilePage() {
     setUploading(true);
     try {
       // 1. Tạo Storage reference: avatars/{uid}
-      const fileRef = ref(storage, `avatars/${user.uid}`);
+      const fileRef = ref(storage, `avatars/${currentUser.uid}`);
       
       // 2. Upload file lên Storage
       const snapshot = await uploadBytes(fileRef, file);
@@ -100,7 +110,7 @@ export default function ProfilePage() {
       const downloadURL = await getDownloadURL(snapshot.ref);
       
       // 4. Lưu Download URL vào Firestore document users/{uid}
-      await updateDoc(doc(db, "users", user.uid), {
+      await updateDoc(doc(db, "users", currentUser.uid), {
         photoURL: downloadURL
       });
       
@@ -116,6 +126,31 @@ export default function ProfilePage() {
       setUploading(false);
     }
   };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess(false);
+    setChangingPassword(true);
+
+    const result = await changePassword(currentPassword, newPassword, confirmNewPassword);
+    setChangingPassword(false);
+
+    if (result.success) {
+      setPasswordSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setTimeout(() => {
+        setShowPasswordForm(false);
+        setPasswordSuccess(false);
+      }, 3000);
+    } else {
+      setPasswordError(result.error);
+    }
+  };
+
+  const canChangePassword = currentUser ? hasPasswordProvider(currentUser) : false;
 
   if (loading) return (
     <div className="min-h-[100dvh] bg-page flex items-center justify-center">
@@ -243,8 +278,11 @@ export default function ProfilePage() {
             <span className="text-xs text-[var(--text-muted)] font-medium">Chưa khả dụng</span>
           </button>
 
-          {/* Các mục khác */}
-          <div className="w-full flex items-center justify-between p-3.5 rounded-xl bg-neutral-500/5">
+          {/* Bảo mật & Đổi mật khẩu */}
+          <button
+            onClick={() => setShowPasswordForm(!showPasswordForm)}
+            className="w-full flex items-center justify-between p-3.5 rounded-xl transition-all duration-200 bg-neutral-500/5 hover:bg-neutral-500/10 active:scale-98"
+          >
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
                 <Shield size={18} />
@@ -253,8 +291,77 @@ export default function ProfilePage() {
                 Bảo mật & Mật khẩu
               </span>
             </div>
-            <span className="text-xs text-[var(--text-muted)] font-medium">Chính sách bảo mật</span>
-          </div>
+            {canChangePassword ? (
+              showPasswordForm ? <ChevronUp size={16} className="text-[var(--text-muted)]" /> : <ChevronDown size={16} className="text-[var(--text-muted)]" />
+            ) : (
+              <span className="text-xs text-[var(--text-muted)] font-medium">Google</span>
+            )}
+          </button>
+
+          {showPasswordForm && canChangePassword && (
+            <form onSubmit={handleChangePassword} className="p-4 rounded-xl space-y-3"
+              style={{ background: "var(--surface-2)", border: "1px solid var(--border-color)" }}>
+              <div className="flex items-center gap-2 mb-1">
+                <Lock size={14} style={{ color: "var(--primary)" }} />
+                <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                  Đổi mật khẩu
+                </span>
+              </div>
+
+              {passwordError && (
+                <p className="text-xs px-3 py-2 rounded-lg"
+                  style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>
+                  {passwordError}
+                </p>
+              )}
+
+              {passwordSuccess && (
+                <p className="text-xs px-3 py-2 rounded-lg"
+                  style={{ background: "rgba(34,197,94,0.08)", color: "#22c55e" }}>
+                  Đổi mật khẩu thành công!
+                </p>
+              )}
+
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Mật khẩu hiện tại"
+                required
+                className="input text-sm"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Mật khẩu mới (≥ 6 ký tự)"
+                required
+                className="input text-sm"
+              />
+              <input
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                placeholder="Xác nhận mật khẩu mới"
+                required
+                className="input text-sm"
+              />
+              <button
+                type="submit"
+                disabled={changingPassword}
+                className="btn btn-primary w-full py-2.5 rounded-xl text-sm"
+              >
+                {changingPassword ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+              </button>
+            </form>
+          )}
+
+          {showPasswordForm && !canChangePassword && (
+            <div className="p-4 rounded-xl text-sm text-center"
+              style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+              Bạn đăng nhập bằng Google — không cần đổi mật khẩu tại đây.
+            </div>
+          )}
 
           <div className="w-full flex items-center justify-between p-3.5 rounded-xl bg-neutral-500/5">
             <div className="flex items-center gap-3">

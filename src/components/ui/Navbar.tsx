@@ -8,8 +8,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-import { signOut, onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { logout, onAuthChange } from "@/lib/auth";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { 
   Sparkles, 
@@ -33,14 +34,11 @@ export default function Navbar({}: NavbarProps) {
   const [photoURL, setPhotoURL] = useState<string>("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = onAuthChange(async (user) => {
       if (user) {
         setIsLoggedIn(true);
         
-        // Lấy photoURL từ Firestore
         try {
-          const { doc, getDoc } = await import("firebase/firestore");
-          const { db } = await import("@/lib/firebase");
           const userSnap = await getDoc(doc(db, "users", user.uid));
           if (userSnap.exists()) {
             setPhotoURL(userSnap.data().photoURL || "");
@@ -57,7 +55,7 @@ export default function Navbar({}: NavbarProps) {
   }, []);
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await logout();
     router.push("/");
   };
 
