@@ -2,13 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { auth } from "@/lib/firebase";
-import {
-  getLearnedWordIds,
-  getNewSavedWordIds,
-  markNewWordLearned,
-  updateProgress,
-} from "@/lib/progress";
+import { markNewWordLearned, updateProgress } from "@/lib/progress";
 import { speakJapanese } from "@/lib/speech";
+import Image from "next/image";
 import SpeakButton from "@/components/ui/SpeakButton";
 import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
 import Link from "next/link";
@@ -84,17 +80,11 @@ const stepLabel: Record<Step, string> = {
 interface StudySessionProps {
   words: Vocabulary[];
   courseId: string;
-  courseName?: string;
-  lessonId: string;
-  lessonTitle?: string;
 }
 
 export default function StudySession({
   words,
   courseId,
-  courseName,
-  lessonId,
-  lessonTitle,
 }: StudySessionProps) {
   const [sessionWords, setSessionWords] = useState<Vocabulary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -543,12 +533,17 @@ export default function StudySession({
             </div>
             {showKanjiHint ? (
               <div className="flex justify-center bg-white rounded-xl p-2 mx-auto border" style={{ maxWidth: "140px" }}>
-                <img
+                <Image
                   src={getKanjiVGUrl(showKanjiHint)}
                   alt={`Nét viết ${showKanjiHint}`}
-                  className="w-28 h-28"
+                  width={112}
+                  height={112}
+                  className="rounded-lg"
                   loading="lazy"
-                  onError={(event) => { (event.target as HTMLImageElement).style.display = 'none'; }}
+                  onError={(event) => {
+                    const target = event.currentTarget as HTMLImageElement;
+                    target.style.display = "none";
+                  }}
                 />
               </div>
             ) : (
@@ -627,12 +622,17 @@ export default function StudySession({
               <div className="grid grid-cols-2 gap-4 justify-items-center pt-2">
                 {kanjisInWord.map((kanji) => (
                   <div key={kanji} className="flex flex-col items-center bg-white rounded-3xl p-3 border shadow-sm" style={{ borderColor: "var(--surface-3)" }}>
-                    <img
+                    <Image
                       src={getKanjiVGUrl(kanji)}
                       alt={`Nét viết ${kanji}`}
+                      width={96}
+                      height={96}
                       className="w-24 h-24 filter dark:invert"
                       loading="lazy"
-                      onError={(event) => { (event.target as HTMLImageElement).style.display = 'none'; }}
+                      onError={(event) => {
+                        const target = event.currentTarget as HTMLImageElement;
+                        target.style.display = "none";
+                      }}
                     />
                     <span className="font-jp text-lg font-bold mt-2" style={{ color: "var(--text)" }}>{kanji}</span>
                   </div>
