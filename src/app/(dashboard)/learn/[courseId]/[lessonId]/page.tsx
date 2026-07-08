@@ -29,7 +29,6 @@ export default function LessonPage() {
   const courseId = params?.courseId || "";
   const lessonId = params?.lessonId || "";
   const [words, setWords] = useState<Vocabulary[]>([]);
-  const [courseName, setCourseName] = useState("");
   const [lessonTitle, setLessonTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -64,18 +63,14 @@ export default function LessonPage() {
         }
 
         const dataWords: Vocabulary[] = [];
-        let firstCourseName = "";
         let firstLessonTitle = "";
 
         snap.docs.forEach((doc) => {
-          const data = doc.data() as Vocabulary;
-          const { id, ...rest } = data;
-          dataWords.push({ id: doc.id, ...rest });
-          if (!firstCourseName) firstCourseName = data.courseName || courseId;
+          const data = doc.data() as Omit<Vocabulary, "id">;
+          dataWords.push({ id: doc.id, ...data });
           if (!firstLessonTitle) firstLessonTitle = data.lessonTitle || lessonId;
         });
 
-        setCourseName(firstCourseName);
         setLessonTitle(firstLessonTitle);
         setWords(dataWords);
       } catch (error) {
