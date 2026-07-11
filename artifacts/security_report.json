@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Unauthorized READ access to user progress/stats document",
+    "status": "FAIL",
+    "error": "Succeeded in reading user progress stats without authentication!"
+  },
+  {
+    "name": "Unauthorized WRITE access to user progress/stats document",
+    "status": "FAIL",
+    "error": "Succeeded in writing user progress stats without authentication!"
+  },
+  {
+    "name": "Unauthorized WRITE access to vocabulary database",
+    "status": "FAIL",
+    "error": "Succeeded in writing to main vocabulary collection!"
+  },
+  {
+    "name": "Unauthorized READ access to user push notification FCM tokens",
+    "status": "FAIL",
+    "error": "Succeeded in reading user FCM tokens collection!"
+  }
+]

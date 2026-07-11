@@ -63,8 +63,7 @@ export function setLastNotifyTime(): void {
 }
 
 // Kiểm tra đã thông báo trong vòng N phút chưa
-// TEST MODE: 5 phút — sau khi xác nhận hoạt động, đổi lại 60 phút
-const NOTIFY_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
+const NOTIFY_INTERVAL_MS = 60 * 60 * 1000; // 60 phút (production)
 
 export function canNotifyNow(): boolean {
   const last = getLastNotifyTime();

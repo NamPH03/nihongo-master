@@ -1,0 +1,21 @@
+[
+  {
+    "name": "Protected route redirect check",
+    "status": "FAIL",
+    "error": "Did not redirect from dashboard, current: http://localhost:3000/dashboard"
+  },
+  {
+    "name": "Auth boundary validation (SQLi/XSS input rejection)",
+    "status": "PASS"
+  },
+  {
+    "name": "Account Registration & Redirect",
+    "status": "FAIL",
+    "error": "Redirection failed, current: http://localhost:3000/register"
+  },
+  {
+    "name": "Authentication Session Persistence (Refresh check)",
+    "status": "FAIL",
+    "error": "Session lost on refresh, url: http://localhost:3000/register"
+  }
+]
