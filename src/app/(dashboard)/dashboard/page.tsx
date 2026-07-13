@@ -43,7 +43,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) { router.push("/login"); return; }
+      if (!user) { router.replace("/login"); return; }
       setUserEmail(user.email || "");
       const [prog, stats, due, lb] = await Promise.all([
         getProgress(user.uid), getSRStats(user.uid),

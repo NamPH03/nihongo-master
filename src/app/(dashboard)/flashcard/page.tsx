@@ -129,7 +129,14 @@ export default function FlashcardPage() {
               </div>
             </div>
             <button
-              onClick={() => setSelectedLevel(selectedLevel)}
+              onClick={() => {
+                setCurrentIndex(0);
+                setIsFlipped(false);
+                setKnown(0);
+                setUnknown(0);
+                setFinished(false);
+                setWords((prev) => [...prev].sort(() => Math.random() - 0.5));
+              }}
               className="btn btn-primary px-8 py-3 rounded-xl"
             >
               🔄 Học lại

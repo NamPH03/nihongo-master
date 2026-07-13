@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { auth } from "@/lib/firebase";
 import { markNewWordLearned, updateProgress } from "@/lib/progress";
 import { speakJapanese } from "@/lib/speech";
-import Image from "next/image";
 import SpeakButton from "@/components/ui/SpeakButton";
 import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
 import Link from "next/link";
@@ -33,6 +32,49 @@ type Step =
   | "write-kanji"
   | "result";
 
+function KanjiStrokeImage({ char, className, width, height }: { char: string; className?: string; width: number; height: number }) {
+  const [svgContent, setSvgContent] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!char) return;
+    setLoading(true);
+    fetch(`/api/kanji/${encodeURIComponent(char)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load");
+        return res.text();
+      })
+      .then((text) => {
+        // Loại bỏ thẻ <?xml ...> để tránh warning React
+        const cleanSvg = text.replace(/<\?xml.*?\?>/i, "").trim();
+        setSvgContent(cleanSvg);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [char]);
+
+  if (loading) {
+    return (
+      <div style={{ width, height }} className="flex items-center justify-center">
+        <div className="w-4 h-4 rounded-full border border-t-transparent animate-spin" style={{ borderColor: "var(--primary)" }} />
+      </div>
+    );
+  }
+
+  if (!svgContent) return null;
+
+  return (
+    <div
+      className={`${className} flex items-center justify-center`}
+      style={{ width, height, color: "var(--text)" }}
+      dangerouslySetInnerHTML={{ __html: svgContent }}
+    />
+  );
+}
+
 function hasKanji(text: string): boolean {
   return /[\u4e00-\u9faf]/.test(text);
 }
@@ -43,14 +85,7 @@ function getKanjiChars(text: string): string[] {
   return found ? Array.from(new Set(found)) : [];
 }
 
-function getKanjiVGCode(char: string): string {
-  const code = char.charCodeAt(0).toString(16);
-  return code.padStart(5, "0");
-}
 
-function getKanjiVGUrl(char: string): string {
-  return `/kanji/${getKanjiVGCode(char)}.svg`;
-}
 
 function generateChoices(
   correct: Vocabulary,
@@ -80,11 +115,17 @@ const stepLabel: Record<Step, string> = {
 interface StudySessionProps {
   words: Vocabulary[];
   courseId: string;
+  learnedWordIds?: Set<string>;
+  isRandomOrder?: boolean;
+  totalWordsInLesson?: number;
 }
 
 export default function StudySession({
   words,
   courseId,
+  learnedWordIds = new Set(),
+  isRandomOrder = false,
+  totalWordsInLesson,
 }: StudySessionProps) {
   const [sessionWords, setSessionWords] = useState<Vocabulary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -101,8 +142,13 @@ export default function StudySession({
 
   useEffect(() => {
     if (words.length === 0) return;
-    const randomized = [...words].sort(() => Math.random() - 0.5);
-    setSessionWords(randomized);
+    // Lọc bỏ từ đã học
+    const newWords = words.filter((w) => !learnedWordIds.has(w.id));
+    // Chỉ random nếu là khoá học N5, N4 giữ thứ tự
+    const ordered = isRandomOrder
+      ? [...newWords].sort(() => Math.random() - 0.5)
+      : newWords;
+    setSessionWords(ordered);
     setLoading(false);
     setCurrentIndex(0);
     setCurrentStep("flashcard");
@@ -112,7 +158,7 @@ export default function StudySession({
     setRecognizedCandidates([]);
     setShowKanjiHint(null);
     setLearnedCount(0);
-  }, [words]);
+  }, [words, learnedWordIds, isRandomOrder]);
 
   useEffect(() => {
     if (sessionWords.length === 0) return;
@@ -237,6 +283,35 @@ export default function StudySession({
     );
   }
 
+  const alreadyLearnedCount = learnedWordIds.size;
+  const total = totalWordsInLesson ?? words.length;
+
+  // Tất cả từ trong bài đã học hết
+  if (!loading && sessionWords.length === 0 && words.length > 0) {
+    return (
+      <div className="card p-12 text-center animate-scale-in rounded-3xl">
+        <div className="text-6xl mb-4">🏆</div>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
+          Bài học đã hoàn thành!
+        </h2>
+        <p className="mb-2" style={{ color: "var(--text-muted)" }}>
+          Bạn đã học hết{" "}
+          <span className="font-bold" style={{ color: "var(--primary)" }}>
+            {alreadyLearnedCount} / {total} từ
+          </span>
+          {" "}trong bài này.
+        </p>
+        <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
+          Các từ đã học sẽ xuất hiện trong phần ôn tập SRS.
+        </p>
+        <div className="flex flex-col gap-3">
+          <Link href="/review" className="btn btn-primary py-3 rounded-2xl">📖 Ôn tập ngay</Link>
+          <Link href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-ghost py-3 rounded-2xl">← Quay về bài học</Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentWord) {
     return (
       <div className="card p-10 text-center rounded-3xl">
@@ -254,9 +329,23 @@ export default function StudySession({
   return (
     <div className="pb-10">
       <div className="mb-6">
+        {/* Tiến độ tổng bài */}
+        {alreadyLearnedCount > 0 && (
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+              <div
+                className="h-1.5 rounded-full transition-all duration-700"
+                style={{ width: `${Math.round((alreadyLearnedCount / total) * 100)}%`, background: "var(--primary)", opacity: 0.4 }}
+              />
+            </div>
+            <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+              {alreadyLearnedCount}/{total} đã học
+            </span>
+          </div>
+        )}
         <div className="flex justify-between items-center mb-2">
           <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {currentIndex + 1} / {sessionWords.length} từ
+            {currentIndex + 1} / {sessionWords.length} từ mới
           </span>
           <span className="text-xs font-medium tabular" style={{ color: "var(--primary)" }}>
             {Math.round(progress)}%
@@ -532,18 +621,12 @@ export default function StudySession({
               {showKanjiHint ? `Thứ tự nét viết chữ ${showKanjiHint}` : "Chọn chữ Kanji để xem thứ tự nét"}
             </div>
             {showKanjiHint ? (
-              <div className="flex justify-center bg-white rounded-xl p-2 mx-auto border" style={{ maxWidth: "140px" }}>
-                <Image
-                  src={getKanjiVGUrl(showKanjiHint)}
-                  alt={`Nét viết ${showKanjiHint}`}
+              <div className="flex justify-center rounded-xl p-2 mx-auto border" style={{ maxWidth: "140px", backgroundColor: "var(--surface-3)", borderColor: "var(--border-color)" }}>
+                <KanjiStrokeImage
+                  char={showKanjiHint}
                   width={112}
                   height={112}
-                  className="rounded-lg"
-                  loading="lazy"
-                  onError={(event) => {
-                    const target = event.currentTarget as HTMLImageElement;
-                    target.style.display = "none";
-                  }}
+                  className="rounded-lg filter dark:invert"
                 />
               </div>
             ) : (
@@ -621,18 +704,12 @@ export default function StudySession({
               <div className="text-sm font-bold text-red-600">❌ Viết chưa chính xác! Cách viết đúng là:</div>
               <div className="grid grid-cols-2 gap-4 justify-items-center pt-2">
                 {kanjisInWord.map((kanji) => (
-                  <div key={kanji} className="flex flex-col items-center bg-white rounded-3xl p-3 border shadow-sm" style={{ borderColor: "var(--surface-3)" }}>
-                    <Image
-                      src={getKanjiVGUrl(kanji)}
-                      alt={`Nét viết ${kanji}`}
+                  <div key={kanji} className="flex flex-col items-center rounded-3xl p-3 border shadow-sm" style={{ backgroundColor: "var(--surface-3)", borderColor: "var(--border-color)" }}>
+                    <KanjiStrokeImage
+                      char={kanji}
                       width={96}
                       height={96}
                       className="w-24 h-24 filter dark:invert"
-                      loading="lazy"
-                      onError={(event) => {
-                        const target = event.currentTarget as HTMLImageElement;
-                        target.style.display = "none";
-                      }}
                     />
                     <span className="font-jp text-lg font-bold mt-2" style={{ color: "var(--text)" }}>{kanji}</span>
                   </div>
@@ -676,11 +753,32 @@ export default function StudySession({
           <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
             Hoàn thành buổi học!
           </h2>
-          <p className="mb-8" style={{ color: "var(--text-muted)" }}>
-            Bạn vừa học được <span className="font-bold" style={{ color: "var(--primary)" }}>{learnedCount} từ mới</span>
+          <p className="mb-3" style={{ color: "var(--text-muted)" }}>
+            Bạn vừa học được{" "}
+            <span className="font-bold" style={{ color: "var(--primary)" }}>{learnedCount} từ mới</span>
           </p>
+          {/* Tiến độ tổng bài */}
+          <div className="rounded-2xl p-4 mb-8" style={{ background: "var(--surface-2)" }}>
+            <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>Tiến độ bài học</div>
+            <div className="text-2xl font-bold mb-1" style={{ color: "var(--primary)" }}>
+              {alreadyLearnedCount + learnedCount} / {total} từ
+            </div>
+            <div className="w-full h-2 rounded-full overflow-hidden mt-2" style={{ background: "var(--surface-3)" }}>
+              <div
+                className="h-2 rounded-full transition-all duration-700"
+                style={{
+                  width: `${Math.min(100, Math.round(((alreadyLearnedCount + learnedCount) / total) * 100))}%`,
+                  background: "var(--primary)"
+                }}
+              />
+            </div>
+            {alreadyLearnedCount + learnedCount >= total && (
+              <p className="text-xs mt-2 font-semibold" style={{ color: "var(--primary)" }}>✅ Hoàn thành 100% bài học!</p>
+            )}
+          </div>
           <div className="flex flex-col gap-3">
-            <Link href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-primary py-3 rounded-xl">← Bài học</Link>
+            <Link href="/review" className="btn btn-primary py-3 rounded-xl">📖 Ôn tập ngay</Link>
+            <Link href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-ghost py-3 rounded-xl">← Bài học</Link>
           </div>
         </div>
       )}

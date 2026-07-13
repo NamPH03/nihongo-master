@@ -356,9 +356,11 @@ export default function ReviewPage() {
                 <SpeakButton text={currentWord.word} size="lg" />
                 <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
-              <div className="text-sm font-jp" style={{ color: "var(--text-muted)" }}>
-                {currentWord.word} · {currentWord.reading}
-              </div>
+              {answerStatus !== "idle" && (
+                <div className="text-sm font-jp animate-fade-in" style={{ color: "var(--text-muted)" }}>
+                  {currentWord.word} · {currentWord.reading}
+                </div>
+              )}
             </div>
             <ChoiceList />
             {answerStatus !== "idle" && <ContinueButton />}

@@ -7,11 +7,14 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/ui/Navbar";
+import { getLearnedOnlyWordIds } from "@/lib/progress";
 
 type LessonSummary = {
   lessonId: string;
   lessonTitle: string;
   wordCount: number;
+  learnedCount: number;   // Số từ user đã học trong bài này
+  wordIds: string[];      // ID các từ trong bài để đối chiếu với progress
 };
 
 export default function CoursePage() {
@@ -25,48 +28,52 @@ export default function CoursePage() {
   const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         router.push("/login");
-      } else {
-        setUserEmail(user.email || "");
+        return;
       }
-    });
-    return () => unsubscribe();
-  }, [router]);
+      setUserEmail(user.email || "");
 
-  useEffect(() => {
-    if (!courseId) return;
+      if (!courseId) return;
 
-    const fetchLessons = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "vocabulary"), where("courseId", "==", courseId)));
+        // Load từ vựng của khoá học và progress song song
+        const [snap, learnedIds] = await Promise.all([
+          getDocs(query(collection(db, "vocabulary"), where("courseId", "==", courseId))),
+          getLearnedOnlyWordIds(user.uid),
+        ]);
+
         if (snap.empty) {
           setNotFound(true);
           return;
         }
 
-        const lessonMap = new Map<string, { title: string; wordCount: number }>();
+        const lessonMap = new Map<string, { title: string; wordIds: string[] }>();
         let firstName = "";
 
         snap.docs.forEach((doc) => {
           const data = doc.data() as Record<string, unknown>;
-          if (!firstName) {
-            firstName = String(data.courseName || courseId);
+          if (!firstName) firstName = String(data.courseName || courseId);
+          const lId = String(data.lessonId || "Bài chưa gán").trim();
+          const lTitle = String(data.lessonTitle || lId || "Bài chưa gán").trim();
+          if (!lessonMap.has(lId)) {
+            lessonMap.set(lId, { title: lTitle, wordIds: [] });
           }
-          const lessonId = String(data.lessonId || "Bài chưa gán").trim();
-          const lessonTitle = String(data.lessonTitle || lessonId || "Bài chưa gán").trim();
-          if (!lessonMap.has(lessonId)) {
-            lessonMap.set(lessonId, { title: lessonTitle, wordCount: 0 });
-          }
-          lessonMap.get(lessonId)!.wordCount += 1;
+          lessonMap.get(lId)!.wordIds.push(doc.id);
         });
 
-        const lessonList: LessonSummary[] = Array.from(lessonMap.entries()).map(([lessonId, item]) => ({
-          lessonId,
-          lessonTitle: item.title,
-          wordCount: item.wordCount,
-        }));
+        const lessonList: LessonSummary[] = Array.from(lessonMap.entries()).map(([lId, item]) => {
+          const learnedInLesson = item.wordIds.filter((id) => learnedIds.has(id)).length;
+          return {
+            lessonId: lId,
+            lessonTitle: item.title,
+            wordCount: item.wordIds.length,
+            learnedCount: learnedInLesson,
+            wordIds: item.wordIds,
+          };
+        });
+
         lessonList.sort((a, b) => a.lessonId.localeCompare(b.lessonId));
         setCourseName(firstName);
         setLessons(lessonList);
@@ -75,10 +82,13 @@ export default function CoursePage() {
       } finally {
         setLoading(false);
       }
-    };
+    });
+    return () => unsubscribe();
+  }, [courseId, router]);
 
-    fetchLessons();
-  }, [courseId]);
+  const totalWords    = lessons.reduce((s, l) => s + l.wordCount, 0);
+  const totalLearned  = lessons.reduce((s, l) => s + l.learnedCount, 0);
+  const completedLessons = lessons.filter((l) => l.learnedCount >= l.wordCount && l.wordCount > 0).length;
 
   return (
     <div className="min-h-[100dvh] bg-page pb-24 md:pb-10">
@@ -87,6 +97,34 @@ export default function CoursePage() {
         <div className="mb-6 animate-fade-up">
           <p className="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Khoá học</p>
           <h1 className="text-3xl font-bold" style={{ color: "var(--text)" }}>{courseName || courseId}</h1>
+
+          {/* Tổng tiến độ khoá học */}
+          {!loading && totalWords > 0 && (
+            <div className="mt-4 rounded-2xl p-4" style={{ background: "var(--surface-2)" }}>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
+                  Tiến độ tổng khoá
+                </span>
+                <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>
+                  {totalLearned}/{totalWords} từ
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "var(--surface-3)" }}>
+                <div
+                  className="h-2 rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.round((totalLearned / totalWords) * 100)}%`,
+                    background: "var(--primary)",
+                  }}
+                />
+              </div>
+              <div className="flex gap-4 mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                <span>✅ {completedLessons}/{lessons.length} bài hoàn thành</span>
+                <span>📝 {Math.round((totalLearned / totalWords) * 100)}%</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-3 mt-4">
             <Link href="/learn" className="btn btn-ghost rounded-2xl py-3">← Danh sách khoá học</Link>
           </div>
@@ -104,30 +142,71 @@ export default function CoursePage() {
             <div className="text-4xl mb-4">⚠️</div>
             <h2 className="text-2xl font-bold mb-3" style={{ color: "var(--text)" }}>Khoá học không tồn tại</h2>
             <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
-              Không tìm thấy bài học cho khoá học này. Hãy kiểm tra lại đường dẫn hoặc dữ liệu Firestore.
+              Không tìm thấy bài học cho khoá học này.
             </p>
             <Link href="/learn" className="btn btn-primary py-3 rounded-2xl">Quay về khoá học</Link>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {lessons.map((lesson) => (
-              <Link
-                key={lesson.lessonId}
-                href={`/learn/${encodeURIComponent(courseId)}/${encodeURIComponent(lesson.lessonId)}`}
-                className="card p-6 rounded-3xl transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-xl font-semibold" style={{ color: "var(--text)" }}>{lesson.lessonTitle}</h2>
-                    <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>{lesson.wordCount} từ vựng</p>
+            {lessons.map((lesson) => {
+              const pct = lesson.wordCount > 0 ? Math.round((lesson.learnedCount / lesson.wordCount) * 100) : 0;
+              const isDone = lesson.learnedCount >= lesson.wordCount && lesson.wordCount > 0;
+              return (
+                <Link
+                  key={lesson.lessonId}
+                  href={`/learn/${encodeURIComponent(courseId)}/${encodeURIComponent(lesson.lessonId)}`}
+                  className="card p-6 rounded-3xl transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl relative overflow-hidden"
+                >
+                  {/* Badge hoàn thành */}
+                  {isDone && (
+                    <div
+                      className="absolute top-3 right-3 text-xs font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
+                    >
+                      ✓ Xong
+                    </div>
+                  )}
+
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0">
+                      <h2 className="text-xl font-semibold truncate" style={{ color: "var(--text)" }}>
+                        {lesson.lessonTitle}
+                      </h2>
+                      <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        {lesson.wordCount} từ vựng
+                      </p>
+                    </div>
+                    <div className="text-2xl flex-shrink-0" style={{ color: "var(--primary)" }}>
+                      {isDone ? "✅" : "📖"}
+                    </div>
                   </div>
-                  <div className="text-3xl" style={{ color: "var(--primary)" }}>📖</div>
-                </div>
-                <div className="rounded-2xl bg-[var(--surface-2)] p-3 text-sm" style={{ color: "var(--text)" }}>
-                  {lesson.wordCount} từ vựng trong bài
-                </div>
-              </Link>
-            ))}
+
+                  {/* Progress bar từng bài */}
+                  <div className="mt-2">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {lesson.learnedCount}/{lesson.wordCount} đã học
+                      </span>
+                      <span
+                        className="text-xs font-bold"
+                        style={{ color: isDone ? "#22c55e" : pct > 0 ? "var(--primary)" : "var(--text-faint)" }}
+                      >
+                        {pct}%
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
+                      <div
+                        className="h-1.5 rounded-full transition-all duration-700"
+                        style={{
+                          width: `${pct}%`,
+                          background: isDone ? "#22c55e" : "var(--primary)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

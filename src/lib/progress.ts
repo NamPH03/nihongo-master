@@ -115,12 +115,22 @@ export async function demoteWord(
 
 // ===== QUERIES =====
 
-// Lấy tất cả wordId đã có trong progress (trừ "stats")
+// Lấy tất cả wordId đã có trong progress (trừ "stats") — bao gồm cả "new"
 export async function getLearnedWordIds(userId: string): Promise<Set<string>> {
   const snap = await getDocs(userProgressCollection(userId));
   return new Set(
     snap.docs
       .filter((d) => d.id !== "stats")
+      .map((d) => d.id)
+  );
+}
+
+// Chỉ lấy wordId có status = "learned" (đã hoàn thành buổi học lần đầu)
+export async function getLearnedOnlyWordIds(userId: string): Promise<Set<string>> {
+  const snap = await getDocs(userProgressCollection(userId));
+  return new Set(
+    snap.docs
+      .filter((d) => d.id !== "stats" && d.data().status === "learned")
       .map((d) => d.id)
   );
 }
@@ -171,13 +181,13 @@ export async function getDueWords(
 
 // ===== PROGRESS & STREAK =====
 function getTodayString(): string {
-  return new Date().toISOString().split("T")[0];
+  const vnTime = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  return vnTime.toISOString().split("T")[0];
 }
 
 function getYesterdayString(): string {
-  const y = new Date();
-  y.setDate(y.getDate() - 1);
-  return y.toISOString().split("T")[0];
+  const vnTime = new Date(Date.now() + 7 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000);
+  return vnTime.toISOString().split("T")[0];
 }
 
 export async function getProgress(userId: string): Promise<ProgressData> {
@@ -209,9 +219,9 @@ export async function updateProgress(
   if (current.lastStudyDate === today) {
     newStreak = current.streak;
   } else if (current.lastStudyDate === yesterday) {
-    newStreak = current.streak + 1;
-  } else if (wordsLearned > 0) {
-    newStreak = 1;
+    newStreak = current.streak + (wordsLearned > 0 ? 1 : 0);
+  } else {
+    newStreak = wordsLearned > 0 ? 1 : 0;
   }
 
   const todayCount = (current.dailyHistory[today] || 0) + wordsLearned;

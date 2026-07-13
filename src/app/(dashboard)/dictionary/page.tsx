@@ -25,8 +25,11 @@ export default function DictionaryPage() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user && process.env.NODE_ENV === "production") router.replace("/login");
-      else if (user) setUserEmail(user.email || "");
+      if (!user) {
+        router.replace("/login");
+      } else {
+        setUserEmail(user.email || "");
+      }
     });
     return () => unsubscribe();
   }, [router]);

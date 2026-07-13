@@ -26,9 +26,10 @@ export default function ProgressPage() {
   }, [router]);
 
   const getLast30Days = () => {
-    const days = [];
+    const days: string[] = [];
     for (let i = 29; i >= 0; i--) {
-      const d = new Date();
+      // Dùng giờ Việt Nam (UTC+7)
+      const d = new Date(Date.now() + 7 * 60 * 60 * 1000);
       d.setDate(d.getDate() - i);
       days.push(d.toISOString().split("T")[0]);
     }
@@ -43,7 +44,7 @@ export default function ProgressPage() {
   );
 
   const last30Days = getLast30Days();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split("T")[0];
   const todayCount = progress?.dailyHistory?.[todayStr] || 0;
 
   return (
