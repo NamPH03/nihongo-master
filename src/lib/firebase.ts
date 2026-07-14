@@ -4,7 +4,7 @@
 
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Đọc chìa khóa từ file .env.local — không hard-code trực tiếp
@@ -22,9 +22,15 @@ const firebaseConfig = {
 // (tránh lỗi khởi động 2 lần trong Next.js)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
+// Khởi tạo Firestore với Local Cache hỗ trợ chế độ Offline và đồng bộ hóa nhiều Tab
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
+
 // Các "công cụ" Firebase — import ở file khác khi cần dùng
 export const auth = getAuth(app);         // Dùng cho: đăng nhập, đăng ký
-export const db = getFirestore(app);      // Dùng cho: lưu/đọc dữ liệu
 export const storage = getStorage(app);   // Dùng cho: lưu ảnh, file
 
 export default app;

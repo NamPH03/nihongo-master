@@ -135,6 +135,7 @@ export default function FlashcardPage() {
                 setKnown(0);
                 setUnknown(0);
                 setFinished(false);
+                // Trigger re-sort and reset of words array
                 setWords((prev) => [...prev].sort(() => Math.random() - 0.5));
               }}
               className="btn btn-primary px-8 py-3 rounded-xl"

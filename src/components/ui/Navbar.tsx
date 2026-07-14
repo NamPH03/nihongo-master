@@ -187,7 +187,8 @@ export default function Navbar({}: NavbarProps) {
                     ${isActive ? "bg-[var(--primary)]/10 text-[var(--primary)]" : ""}`}>
                     <Icon className="w-5 h-5" />
                   </div>
-                  <span className="text-[10px] font-semibold mt-0.5 tracking-tight">
+                  <span className="text-[10px] font-semibold mt-0.5 tracking-tight"
+                        style={{ color: isActive ? "var(--primary)" : "var(--text-muted)" }}>
                     {link.label}
                   </span>
                 </Link>

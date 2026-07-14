@@ -43,7 +43,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) { router.replace("/login"); return; }
+      if (!user) { window.location.replace("/login"); return; }
       setUserEmail(user.email || "");
       const [prog, stats, due, lb] = await Promise.all([
         getProgress(user.uid), getSRStats(user.uid),
@@ -65,11 +65,28 @@ export default function DashboardPage() {
   const todayCount = progress?.dailyHistory?.[todayStr] || 0;
 
   if (loading) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải...</p>
+    <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
+      {/* Skeleton Navbar */}
+      <nav className="navbar border-b sticky top-0 z-40 bg-[var(--surface)] h-14" style={{ borderColor: "var(--border-color)" }} />
+      
+      <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-6 animate-pulse">
+        {/* Skeleton Greeting & Streak */}
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="h-7 w-48 rounded bg-[var(--surface-3)] mb-2" />
+            <div className="h-4 w-64 rounded bg-[var(--surface-2)]" />
+          </div>
+          <div className="h-8 w-24 rounded bg-[var(--surface-3)]" />
+        </div>
+
+        {/* Skeleton Focus Card */}
+        <div className="card p-6 h-40 bg-[var(--surface-2)] rounded-3xl" />
+
+        {/* Skeleton Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="card p-6 h-48 bg-[var(--surface)] rounded-3xl" />
+          <div className="card p-6 h-48 bg-[var(--surface)] rounded-3xl" />
+        </div>
       </div>
     </div>
   );

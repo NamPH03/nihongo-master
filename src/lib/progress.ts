@@ -203,7 +203,18 @@ export async function getProgress(userId: string): Promise<ProgressData> {
     await setDoc(ref, d);
     return d;
   }
-  return snap.data() as ProgressData;
+  const data = snap.data() as ProgressData;
+  const today = getTodayString();
+  const yesterday = getYesterdayString();
+  
+  // Kiểm tra xem user có bỏ lỡ việc học quá 1 ngày hay không
+  if (data.lastStudyDate && data.lastStudyDate !== today && data.lastStudyDate !== yesterday) {
+    const updated = { ...data, streak: 0 };
+    await setDoc(ref, updated, { merge: true });
+    return updated;
+  }
+  
+  return data;
 }
 
 export async function updateProgress(

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { login } from "@/lib/auth";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import GoogleSignInButton from "@/components/ui/GoogleSignInButton";
 
@@ -13,7 +12,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +22,7 @@ export default function LoginPage() {
     setLoading(false);
 
     if (result.success) {
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } else {
       setError(result.error);
     }

@@ -48,11 +48,25 @@ export default function LeaderboardPage() {
   }, [router, loadData]);
 
   if (loading) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải bảng xếp hạng...</p>
+    <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
+      <nav className="navbar border-b sticky top-0 z-40 bg-[var(--surface)] h-14" style={{ borderColor: "var(--border-color)" }} />
+      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-6 animate-pulse">
+        {/* Title */}
+        <div className="h-8 w-48 rounded bg-[var(--surface-3)]" />
+        
+        {/* Podium Skeleton */}
+        <div className="grid grid-cols-3 items-end gap-3 h-48 bg-[var(--surface-2)]/40 p-4 rounded-3xl border border-[var(--border-color)]">
+          <div className="h-28 rounded bg-[var(--surface)]" />
+          <div className="h-36 rounded bg-[var(--surface-3)]" />
+          <div className="h-24 rounded bg-[var(--surface)]" />
+        </div>
+        
+        {/* Table Rows Skeleton */}
+        <div className="flex flex-col gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="card p-4 h-14 bg-[var(--surface)] rounded-2xl" />
+          ))}
+        </div>
       </div>
     </div>
   );

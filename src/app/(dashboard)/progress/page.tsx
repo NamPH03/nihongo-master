@@ -37,9 +37,17 @@ export default function ProgressPage() {
   };
 
   if (loading) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
-      <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
-        style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
+    <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
+      <nav className="navbar border-b sticky top-0 z-40 bg-[var(--surface)] h-14" style={{ borderColor: "var(--border-color)" }} />
+      <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-6 animate-pulse">
+        <div className="h-8 w-40 rounded bg-[var(--surface-3)]" />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="card p-4 h-24 bg-[var(--surface)]" />
+          <div className="card p-4 h-24 bg-[var(--surface)]" />
+          <div className="card p-4 h-24 bg-[var(--surface)]" />
+        </div>
+        <div className="card p-6 h-64 bg-[var(--surface)] rounded-3xl" />
+      </div>
     </div>
   );
 

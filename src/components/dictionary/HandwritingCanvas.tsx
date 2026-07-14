@@ -23,18 +23,37 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Thiết lập size canvas dựa trên kích thước vùng hiển thị thực tế
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      // Chỉ thiết lập lại kích thước buffer nếu kích thước thực tế thay đổi đáng kể
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        // Lưu lại nét vẽ cũ trước khi resize buffer (vì resize sẽ clear canvas)
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext("2d");
+        if (tempCtx) {
+          tempCtx.drawImage(canvas, 0, 0);
+        }
 
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = "var(--text)";
-    }
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "var(--text)";
+          // Vẽ lại các nét vẽ cũ sau khi scale
+          ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, rect.width, rect.height);
+        }
+      }
+    };
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return () => window.removeEventListener("resize", resizeCanvas);
   }, []);
 
   const getCoordinates = (e: MouseEvent | TouchEvent): { x: number; y: number } => {
@@ -42,16 +61,20 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
 
+    // Tính toán tỉ lệ scale giữa kích thước hiển thị CSS (rect.width) và kích thước buffer nội bộ (canvas.width)
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     if ("touches" in e) {
       if (e.touches.length === 0) return { x: 0, y: 0 };
       return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY,
       };
     } else {
       return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY,
       };
     }
   };

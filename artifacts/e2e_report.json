@@ -1,8 +1,7 @@
 [
   {
     "name": "Protected route redirect check",
-    "status": "FAIL",
-    "error": "Did not redirect from dashboard, current: http://localhost:3000/dashboard"
+    "status": "PASS"
   },
   {
     "name": "Auth boundary validation (SQLi/XSS input rejection)",

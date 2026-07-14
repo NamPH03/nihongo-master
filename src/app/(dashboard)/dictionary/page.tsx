@@ -26,7 +26,7 @@ export default function DictionaryPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        router.replace("/login");
+        window.location.replace("/login");
       } else {
         setUserEmail(user.email || "");
       }

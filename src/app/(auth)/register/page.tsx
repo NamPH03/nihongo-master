@@ -4,7 +4,6 @@ import { useState } from "react";
 import { register } from "@/lib/auth";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import GoogleSignInButton from "@/components/ui/GoogleSignInButton";
 
@@ -14,7 +13,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +23,7 @@ export default function RegisterPage() {
     setLoading(false);
 
     if (result.success) {
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } else {
       setError(result.error);
     }
