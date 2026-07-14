@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { collection, getDocs, query } from "firebase/firestore";
@@ -47,7 +47,11 @@ export default function LearnHomePage() {
           const courseName = String(data.courseName || courseId || "Khoá học chưa gán").trim();
 
           if (!courseId) {
-            unassigned += 1;
+            // Bỏ qua từ lưu từ Từ điển (source: "dictionary") — chúng nằm trong Sổ tay, không phải khoá học
+            const source = String(data.source || "").trim();
+            if (source !== "dictionary") {
+              unassigned += 1;
+            }
             return;
           }
 
@@ -141,9 +145,11 @@ export default function LearnHomePage() {
         )}
 
         {unassignedWordCount > 0 && (
-          <div className="mt-8 rounded-3xl border border-orange-300/30 bg-orange-50/60 p-5 text-sm" style={{ color: "#92400e" }}>
-            Có {unassignedWordCount} từ chưa được gán khoá học hoặc bài học.
-            <div>Những từ này sẽ không xuất hiện trong chế độ học theo khoá học.</div>
+          <div className="mt-8 rounded-3xl border border-blue-300/30 bg-blue-50/60 p-5 text-sm" style={{ color: "#1e40af" }}>
+            <span className="font-semibold">📖 {unassignedWordCount} từ đã lưu từ Từ điển</span>
+            <div className="mt-1 opacity-80">
+              Những từ này nằm trong <strong>Sổ tay</strong> của bạn và sẽ xuất hiện trong lịch ôn tập, nhưng không thuộc bài học nào trong khoá học.
+            </div>
           </div>
         )}
       </div>

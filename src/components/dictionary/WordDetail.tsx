@@ -3,10 +3,10 @@
 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { speakJapanese } from "@/lib/speech";
 import type { DictionaryWord } from "@/types/dictionary";
-import { saveWordToSchedule } from "@/lib/progress";
+import { saveWordFromDictionary } from "@/lib/progress";
 import { Volume2, Bookmark, BookmarkCheck, Info, X } from "lucide-react";
 
 type Props = { word: DictionaryWord };
@@ -46,13 +46,21 @@ export default function WordDetail({ word }: Props) {
     const checkSaved = async () => {
       const user = auth.currentUser;
       if (!user) return;
-      const vocabSnap = await getDocs(
-        query(collection(db, "vocabulary"), where("word", "==", word.word), where("reading", "==", word.reading))
-      );
-      if (!vocabSnap.empty) {
-        const wordId = vocabSnap.docs[0].id;
-        const progressSnap = await getDocs(collection(db, "userProgress", user.uid, "words"));
-        if (progressSnap.docs.some((d) => d.id === wordId)) setSaveStatus("already_learning");
+      // Tìm wordId qua API (không ghi trực tiếp vào Firestore client)
+      try {
+        const res = await fetch("/api/vocabulary/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word: word.word, reading: word.reading }),
+        });
+        if (!res.ok) return;
+        const { wordId } = await res.json();
+        if (!wordId) return;
+        // Kiểm tra xem user đã có từ này trong progress chưa
+        const progressSnap = await getDoc(doc(db, "users", user.uid, "progress", wordId));
+        if (progressSnap.exists()) setSaveStatus("already_learning");
+      } catch {
+        // Bỏ qua lỗi check
       }
     };
     checkSaved();
@@ -104,25 +112,32 @@ export default function WordDetail({ word }: Props) {
     if (!user) return;
     setSaveStatus("saving");
     try {
-      const vocabSnap = await getDocs(
-        query(collection(db, "vocabulary"), where("word", "==", word.word), where("reading", "==", word.reading))
-      );
-      let wordId: string;
-      if (!vocabSnap.empty) {
-        wordId = vocabSnap.docs[0].id;
-      } else {
-        const meaning = word.meanings[0]?.definitions[0]?.meaning || "";
-        const type = word.meanings[0]?.partOfSpeech || "N";
-        const example = word.meanings[0]?.definitions[0]?.example || "";
-        const exampleMeaning = word.meanings[0]?.definitions[0]?.exampleMeaning || "";
-        const newDocRef = await addDoc(collection(db, "vocabulary"), {
-          word: word.word, reading: word.reading, meaning, type,
-          level: word.level || "N5", example, exampleMeaning,
-          status: "new", createdAt: new Date().toISOString(), source: "dictionary",
-        });
-        wordId = newDocRef.id;
-      }
-      await saveWordToSchedule(user.uid, wordId);
+      const meaning = word.meanings[0]?.definitions[0]?.meaning || "";
+      const type = word.meanings[0]?.partOfSpeech || "N";
+      const example = word.meanings[0]?.definitions[0]?.example || "";
+      const exampleMeaning = word.meanings[0]?.definitions[0]?.exampleMeaning || "";
+
+      // Gọi API route (Admin SDK) để tìm hoặc tạo document vocabulary
+      const res = await fetch("/api/vocabulary/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: word.word,
+          reading: word.reading,
+          meaning,
+          type,
+          level: word.level || "N5",
+          example,
+          exampleMeaning,
+        }),
+      });
+
+      if (!res.ok) throw new Error("API error");
+      const { wordId } = await res.json();
+      if (!wordId) throw new Error("No wordId returned");
+
+      // Lưu vào sổ tay của user → mức 1 ngay
+      await saveWordFromDictionary(user.uid, wordId);
       setSaveStatus("saved");
     } catch (err) {
       console.error("Lỗi lưu từ:", err);
@@ -305,7 +320,7 @@ export default function WordDetail({ word }: Props) {
           {saveStatus === "idle" ? (
             <>
               <Bookmark className="w-4 h-4" />
-              Lưu vào kho từ & lịch học
+              Lưu vào sổ tay
             </>
           ) : saveStatus === "saving" ? (
             "Đang lưu..."

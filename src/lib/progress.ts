@@ -50,7 +50,23 @@ function userStatsRef(userId: string) {
 
 // ===== WORD PROGRESS =====
 
-// Lưu từ mới từ từ điển vào lịch học (status: "new")
+// Lưu từ từ từ điển vào sổ tay → thẳng mức 1 (status: "learned")
+export async function saveWordFromDictionary(
+  userId: string,
+  wordId: string
+): Promise<void> {
+  const nextReview = new Date(Date.now() + SR_INTERVALS[1]).toISOString();
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
+    srLevel: 1,
+    nextReview,
+    status: "learned",
+    lastReviewed: new Date().toISOString(),
+  }, { merge: true });
+}
+
+// Lưu từ mới vào lịch học (status: "new") — dùng cho luồng học từ bài học khóa học
+// @deprecated — dùng saveWordFromDictionary cho từ điển, markNewWordLearned sau khi học xong
 export async function saveWordToSchedule(
   userId: string,
   wordId: string
@@ -145,31 +161,45 @@ export async function getNewSavedWordIds(userId: string): Promise<Set<string>> {
   );
 }
 
-// Lấy số từ ở mỗi mức SR
+// Lấy số từ ở mỗi mức SR — CHỈ đếm từ có vocabulary tương ứng (tránh orphan inflate stats)
 export async function getSRStats(
   userId: string
 ): Promise<Record<number, number>> {
   const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+  // Load vocabulary IDs một lần dưới dạng Set để check O(1)
+  const vocabSnap = await getDocs(collection(db, "vocabulary"));
+  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
+
   const snap = await getDocs(userProgressCollection(userId));
   snap.forEach((d) => {
     if (d.id === "stats") return;
+    // Bỏ qua orphan progress docs (vocabulary đã bị xóa hoặc re-import)
+    if (!vocabIds.has(d.id)) return;
     const level = Number(d.data().srLevel || 0);
     if (level >= 1 && level <= 5) stats[level]++;
   });
   return stats;
 }
 
-// Lấy từ đến hạn ôn tập
+// Lấy từ đến hạn ôn tập — CHỈ trả về từ có vocabulary tương ứng (tránh orphan)
 export async function getDueWords(
   userId: string,
   limitCount = 20
 ): Promise<DueWordProgress[]> {
   const now = new Date().toISOString();
+
+  // Load vocabulary IDs để filter orphan
+  const vocabSnap = await getDocs(collection(db, "vocabulary"));
+  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
+
   const snap = await getDocs(userProgressCollection(userId));
 
   return snap.docs
     .filter((d) => {
       if (d.id === "stats") return false;
+      // Bỏ qua orphan docs
+      if (!vocabIds.has(d.id)) return false;
       const data = d.data();
       if (data.status !== "learned") return false;
       const nextReview = data.nextReview;

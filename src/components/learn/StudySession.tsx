@@ -246,8 +246,13 @@ export default function StudySession({
   const checkDrawingKanji = () => {
     if (!currentWord) return;
     const kanjiChars = getKanjiChars(currentWord.word);
-    const hasCorrectKanji = kanjiChars.some((char) => recognizedCandidates.includes(char));
-    setAnswerStatus(hasCorrectKanji ? "correct" : "wrong");
+    
+    // Yêu cầu: Số lượng ký tự người dùng vẽ phải bằng số lượng Kanji trong từ,
+    // và từng vị trí trong mảng recognizedCandidates phải khớp hoàn toàn với kanjiChars theo đúng thứ tự.
+    const isCorrect = kanjiChars.length === recognizedCandidates.length && 
+      kanjiChars.every((char, index) => recognizedCandidates[index] === char);
+
+    setAnswerStatus(isCorrect ? "correct" : "wrong");
   };
 
   const getChoiceStyle = (choice: string): React.CSSProperties => {
