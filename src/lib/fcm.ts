@@ -37,7 +37,12 @@ export async function saveFCMTokenToServer(userId: string, token: string): Promi
     await fetch('/api/notifications/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, token }),
+      body: JSON.stringify({
+        userId,
+        token,
+        // Gửi kèm origin để server biết token này từ production hay localhost
+        origin: typeof window !== 'undefined' ? window.location.origin : 'unknown',
+      }),
     });
   } catch (err) {
     console.error('[FCM] Lỗi lưu token:', err);

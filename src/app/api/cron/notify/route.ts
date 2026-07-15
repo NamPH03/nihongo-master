@@ -97,13 +97,15 @@ export async function GET(req: NextRequest) {
   // Lấy tất cả FCM tokens từ tất cả users (collectionGroup query)
   const tokensSnap = await adminDb.collectionGroup('fcmTokens').get();
 
-  // Nhóm tokens theo userId
+  // Nhóm tokens theo userId — bỏ qua token từ localhost/dev để tránh gửi 2 lần
   const userTokens: Record<string, string[]> = {};
   tokensSnap.forEach((doc) => {
     const userId = doc.ref.parent.parent?.id;
     if (!userId) return;
-    const { token } = doc.data();
+    const { token, origin } = doc.data();
     if (!token) return;
+    // Bỏ qua token đăng ký từ localhost (tránh duplicate khi dev và prod cùng login)
+    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return;
     if (!userTokens[userId]) userTokens[userId] = [];
     userTokens[userId].push(token);
   });
@@ -111,6 +113,10 @@ export async function GET(req: NextRequest) {
   const userIds = Object.keys(userTokens);
   let totalSent = 0;
   const errors: string[] = [];
+
+  // Load vocabulary IDs một lần duy nhất (dùng để filter orphan progress docs)
+  const vocabSnap = await adminDb.collection('vocabulary').get();
+  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
 
   for (const userId of userIds) {
     const tokens = userTokens[userId];
@@ -125,11 +131,13 @@ export async function GET(req: NextRequest) {
       const notifStateSnap = await notifStateRef.get();
       const notifState = notifStateSnap.data() || {};
 
-      // Đếm số từ đến hạn ôn tập
+      // Đếm số từ đến hạn ôn tập (chỉ đếm từ có trong vocabulary, bỏ orphan)
       const progressSnap = await adminDb.collection(`users/${userId}/progress`).get();
       let dueCount = 0;
       progressSnap.forEach((doc) => {
         if (doc.id === 'stats') return;
+        // Bỏ qua orphan docs không có trong collection vocabulary
+        if (!vocabIds.has(doc.id)) return;
         const data = doc.data();
         if (data.status !== 'learned') return;
         if (!data.nextReview || data.nextReview <= now) dueCount++;

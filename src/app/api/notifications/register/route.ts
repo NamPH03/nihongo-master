@@ -8,7 +8,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, token } = await req.json();
+    const { userId, token, origin } = await req.json();
 
     if (!userId || !token) {
       return NextResponse.json({ error: 'Thiếu userId hoặc token' }, { status: 400 });
@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
     await adminDb.doc(`users/${userId}/fcmTokens/${tokenKey}`).set(
       {
         token,
+        // Lưu origin để cron job chỉ gửi notification tới token từ production
+        origin: origin || 'unknown',
         createdAt: new Date().toISOString(),
         lastSeen: new Date().toISOString(),
       },

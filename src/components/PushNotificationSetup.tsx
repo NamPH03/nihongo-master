@@ -38,21 +38,40 @@ export default function PushNotificationSetup() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Lắng nghe thông báo khi app đang mở (foreground) — hiển thị toast nhỏ
+  // Lắng nghe thông báo khi app đang mở (foreground)
+  // Dùng Service Worker registration.showNotification() với cùng tag 'nihongo-master'
+  // để browser tự deduplicate (không tạo 2 notification cùng lúc)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const unsubscribeForeground = listenForegroundMessages((payload) => {
+    const unsubscribeForeground = listenForegroundMessages(async (payload) => {
       const title = payload.notification?.title || 'Nihongo Master';
       const body = payload.notification?.body || '';
+      const link = payload.fcmOptions?.link || payload.data?.link || '/dashboard';
 
-      // Hiển thị notification native nếu app đang focus (thay cho toast)
-      if (Notification.permission === 'granted') {
+      if (Notification.permission !== 'granted') return;
+
+      // Dùng SW registration.showNotification thay vì new Notification()
+      // để cùng tag với onBackgroundMessage → browser deduplicate tự động
+      try {
+        const reg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+        if (reg) {
+          await reg.showNotification(title, {
+            body,
+            icon: '/icon-192.png',
+            badge: '/icon-192.png',
+            tag: 'nihongo-master', // Cùng tag với SW → không bị duplicate
+            data: { url: link },
+            requireInteraction: false,
+          });
+        }
+      } catch {
+        // Fallback: nếu SW không có, dùng Notification API thường
         new Notification(title, {
           body,
           icon: '/icon-192.png',
           badge: '/icon-192.png',
-          tag: 'nihongo-master-fg',
+          tag: 'nihongo-master',
         });
       }
     });
