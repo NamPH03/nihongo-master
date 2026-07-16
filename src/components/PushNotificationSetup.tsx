@@ -45,9 +45,9 @@ export default function PushNotificationSetup() {
     if (typeof window === 'undefined') return;
 
     const unsubscribeForeground = listenForegroundMessages(async (payload) => {
-      const title = payload.notification?.title || 'Nihongo Master';
-      const body = payload.notification?.body || '';
-      const link = payload.fcmOptions?.link || payload.data?.link || '/dashboard';
+      const title = payload.data?.title || 'Nihongo Master';
+      const body = payload.data?.body || '';
+      const link = payload.data?.url || '/dashboard';
 
       if (Notification.permission !== 'granted') return;
 

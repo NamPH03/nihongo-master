@@ -46,16 +46,8 @@ export async function GET(req: NextRequest) {
   try {
     const result = await adminMessaging.sendEachForMulticast({
       tokens,
-      notification: { title, body },
-      webpush: {
-        notification: {
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
-          tag: "nihongo-master",
-          requireInteraction: false,
-        },
-        fcmOptions: { link: "/dashboard" },
-      },
+      // Data-only: the service worker is the sole notification renderer.
+      data: { title, body, url: "/dashboard" },
     });
 
     const successTokens: string[] = [];

@@ -151,15 +151,20 @@ export async function GET(req: NextRequest) {
       if (dueCount > 0 && dueCount % 10 === 0) {
         const lastNotifiedThreshold = notifState.lastNotifiedDueThreshold || 0;
         const lastNotifiedDate = notifState.lastNotifiedDueDate || '';
+        const lastDueCount = notifState.lastDueCount || 0;
 
-        // Chỉ notify nếu: ngưỡng mới HOẶC ngày mới
-        if (dueCount !== lastNotifiedThreshold || lastNotifiedDate !== todayVN) {
+        // Gửi khi milestone mới được chạm tới (count tăng lên) hoặc khi qua ngày mới.
+        const isNewMilestone = dueCount > lastDueCount;
+        const isNewDay = lastNotifiedDate !== todayVN;
+
+        if ((isNewMilestone && dueCount !== lastNotifiedThreshold) || isNewDay) {
           notification = getReviewReminderMessage(dueCount);
           stateUpdates.lastNotifiedDueThreshold = dueCount;
           stateUpdates.lastNotifiedDueDate = todayVN;
           notifUrl = '/review';
         }
       }
+      stateUpdates.lastDueCount = dueCount;
 
       // --- Ưu tiên 2: Nhắc học (nếu chưa gửi nhắc ôn tập hôm nay) ---
       if (!notification) {
@@ -179,20 +184,11 @@ export async function GET(req: NextRequest) {
       if (notification && tokens.length > 0) {
         const result = await adminMessaging.sendEachForMulticast({
           tokens,
-          notification: {
+          // Data-only: prevent FCM from auto-rendering a duplicate notification.
+          data: {
             title: notification.title,
             body: notification.body,
-          },
-          webpush: {
-            notification: {
-              icon: '/icon-192.png',
-              badge: '/icon-192.png',
-              tag: 'nihongo-master',
-              requireInteraction: false,
-            },
-            fcmOptions: {
-              link: notifUrl,
-            },
+            url: notifUrl,
           },
           apns: {
             payload: {

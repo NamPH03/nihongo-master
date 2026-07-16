@@ -18,14 +18,15 @@ const messaging = firebase.messaging();
 
 // Nhận thông báo khi app đang ở background / đóng
 messaging.onBackgroundMessage(function (payload) {
-  const { title, body, icon } = payload.notification || {};
+  // Data-only messages prevent FCM from auto-rendering a second notification.
+  const { title, body, url } = payload.data || {};
 
   self.registration.showNotification(title || 'Nihongo Master', {
     body: body || 'Đến giờ học tiếng Nhật rồi!',
-    icon: icon || '/icon-192.png',
+    icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: 'nihongo-master',
-    data: payload.data || {},
+    data: { url: url || '/dashboard' },
     requireInteraction: false,
   });
 });
