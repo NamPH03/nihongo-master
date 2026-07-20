@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -33,11 +33,27 @@ const srColors: Record<number, { bg: string; text: string }> = {
   5: { bg: "rgba(34,197,94,0.12)",   text: "#22c55e" },
 };
 
+// Kiểm tra chuỗi có chứa ký tự Nhật không (hiragana, katakana, kanji)
+function hasJapanese(str: string): boolean {
+  return /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf\u3400-\u4dbf]/.test(str);
+}
+
 function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
-  const others = allWords.filter((w) => w.id !== correct.id).sort(() => Math.random() - 0.5).slice(0, 3);
-  const choices = type === "word"
-    ? [correct.word, ...others.map((w) => w.word)]
-    : [correct.meaning, ...others.map((w) => w.meaning)];
+  const correctValue = type === "word" ? correct.word : correct.meaning;
+
+  // Lọc: khác từ đang hỏi, và nếu chọn nghĩa thì nghĩa phải là tiếng Việt (không có ký tự Nhật)
+  const pool = allWords.filter((w) => {
+    if (w.id === correct.id) return false;
+    if (type === "meaning" && hasJapanese(w.meaning)) return false;
+    const val = type === "word" ? w.word : w.meaning;
+    return val && val !== correctValue; // loại trùng nghĩa
+  });
+
+  const others = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+  const otherValues = others.map((w) => type === "word" ? w.word : w.meaning);
+
+  // Ghép lại và shuffle — luôn đủ 4 nếu pool đủ
+  const choices = [correctValue, ...otherValues];
   return choices.sort(() => Math.random() - 0.5);
 }
 
@@ -46,6 +62,7 @@ function pickRandom(arr: ReviewStep[]): ReviewStep {
 }
 
 export default function ReviewPage() {
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [dueWords, setDueWords] = useState<ReviewWord[]>([]);
   const [allWords, setAllWords] = useState<Vocabulary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -98,20 +115,25 @@ export default function ReviewPage() {
     fetchData();
   }, []);
 
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
+  const [isChecked, setIsChecked] = useState(false);
+
   const initWord = useCallback((word: ReviewWord, usedSoFar: ReviewStep[]) => {
     const available = ALL_STEPS.filter((s) => !usedSoFar.includes(s));
     const picked = pickRandom(available);
     const remaining = available.filter((s) => s !== picked);
     setCurrentStep(picked);
     setRemainingSteps(remaining);
+    setSelectedChoice(null);
     setSelectedAnswer(null);
     setAnswerStatus("idle");
+    setIsChecked(false);
     setTypedAnswer("");
     setForgotThisWord(false);
     if (picked === "meaning-to-word") setChoices(generateChoices(word, allWords, "word"));
     else if (picked === "word-to-meaning") setChoices(generateChoices(word, allWords, "meaning"));
     else if (picked === "listening") setChoices(generateChoices(word, allWords, "meaning"));
-    setTimeout(() => speakJapanese(word.word, false), 300);
+    if (picked === "listening") setTimeout(() => speakJapanese(word.word, false), 300);
   }, [allWords]);
 
   useEffect(() => {
@@ -128,13 +150,15 @@ export default function ReviewPage() {
         const newRemaining = remainingSteps.filter((s) => s !== next);
         setCurrentStep(next);
         setRemainingSteps(newRemaining);
+        setSelectedChoice(null);
         setSelectedAnswer(null);
         setAnswerStatus("idle");
+        setIsChecked(false);
         setTypedAnswer("");
         if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
         else if (next === "word-to-meaning") setChoices(generateChoices(currentWord, allWords, "meaning"));
         else if (next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
-        setTimeout(() => speakJapanese(currentWord.word, false), 300);
+        if (next === "listening") setTimeout(() => speakJapanese(currentWord.word, false), 300);
       } else { await finishWord(false); }
     } else { await finishWord(!forgotThisWord); }
   };
@@ -150,52 +174,104 @@ export default function ReviewPage() {
     else { const nextIdx = currentIndex + 1; setCurrentIndex(nextIdx); initWord(dueWords[nextIdx], []); }
   };
 
+  // Chọn tạm thời (chưa check)
+  const handleSelectChoice = (choice: string) => {
+    if (isChecked) return;
+    setSelectedChoice(choice);
+  };
+
+  // Nhấn nút Kiểm tra hoặc Enter để check đáp án
+  const handleCheckAnswer = () => {
+    if (isChecked) return;
+    if (currentStep === "type-reading") {
+      const correct = currentWord.reading.trim();
+      const isCorrect = typedAnswer.trim() === correct;
+      setAnswerStatus(isCorrect ? "correct" : "wrong");
+      setIsChecked(true);
+    } else {
+      if (!selectedChoice) return;
+      let correct = "";
+      if (currentStep === "meaning-to-word") correct = currentWord.word;
+      else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
+      
+      setSelectedAnswer(selectedChoice);
+      setAnswerStatus(selectedChoice === correct ? "correct" : "wrong");
+      setIsChecked(true);
+    }
+  };
+
+  // Phím tắt bàn phím
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (loading || finished || dueWords.length === 0) return;
+
+      // Nhấn Enter
+      if (e.key === "Enter") {
+        if (!isChecked) {
+          if (currentStep === "type-reading") {
+            if (typedAnswer.trim()) handleCheckAnswer();
+          } else {
+            if (selectedChoice) handleCheckAnswer();
+          }
+        } else {
+          handleResult(answerStatus === "correct");
+        }
+        return;
+      }
+
+      // Nhấn phím 1, 2, 3, 4
+      if (currentStep !== "type-reading" && !isChecked && ["1", "2", "3", "4"].includes(e.key)) {
+        const idx = parseInt(e.key) - 1;
+        if (choices[idx]) {
+          handleSelectChoice(choices[idx]);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus]);
+
+  // Tự động focus vào ô input khi ở màn hình gõ chữ (đặt ở top-level)
+  useEffect(() => {
+    if (currentStep === "type-reading" && !isChecked && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [currentStep, isChecked, currentIndex]);
+
   const getChoiceStyle = (choice: string): React.CSSProperties => {
     let correct = "";
     if (currentStep === "meaning-to-word") correct = currentWord.word;
     else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
-    if (answerStatus === "idle") return {};
-    if (choice === correct) return { background: "var(--primary)", color: "#0d1f14", borderColor: "var(--primary)" };
-    if (choice === selectedAnswer) return { background: "#ef4444", color: "#fff", borderColor: "#ef4444" };
-    return { opacity: 0.35 };
-  };
 
-  const handleChoice = (choice: string) => {
-    if (answerStatus !== "idle") return;
-    setSelectedAnswer(choice);
-    let correct = "";
-    if (currentStep === "meaning-to-word") correct = currentWord.word;
-    else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
-    setAnswerStatus(choice === correct ? "correct" : "wrong");
-  };
-
-  const checkTyped = () => {
-    const correct = currentWord.reading.trim();
-    setAnswerStatus(typedAnswer.trim() === correct ? "correct" : "wrong");
-  };
-
-  const progressPct = dueWords.length > 0 ? (doneCount / dueWords.length) * 100 : 0;
-  const srInfo = currentWord ? srColors[currentWord.srLevel || 1] : srColors[1];
-
-  const ContinueButton = () => (
-    <button
-      onClick={() => handleResult(answerStatus === "correct")}
-      className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
-      style={answerStatus === "correct"
-        ? { background: "var(--primary)", color: "#0d1f14" }
-        : { background: "#ef4444", color: "#fff" }
+    if (!isChecked) {
+      // Đang chọn tạm thời
+      if (choice === selectedChoice) {
+        return {
+          borderColor: "var(--primary)",
+          boxShadow: "0 0 0 1px var(--primary)",
+          background: "var(--primary-glow)",
+        };
       }
-    >
-      {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-    </button>
-  );
+      return {};
+    }
+
+    // Sau khi đã kiểm tra
+    if (choice === correct) {
+      return { background: "rgba(34, 197, 94, 0.15)", color: "var(--text)", borderColor: "var(--primary)" };
+    }
+    if (choice === selectedAnswer && choice !== correct) {
+      return { background: "rgba(239, 68, 68, 0.15)", color: "var(--text)", borderColor: "#ef4444" };
+    }
+    return { opacity: 0.5 };
+  };
 
   const ChoiceList = () => (
     <div className="flex flex-col gap-3">
       {choices.map((choice, i) => (
         <button
           key={i}
-          onClick={() => handleChoice(choice)}
+          onClick={() => handleSelectChoice(choice)}
           className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
           style={{
             background: "var(--surface-2)",
@@ -205,14 +281,20 @@ export default function ReviewPage() {
           }}
         >
           <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium tabular"
-            style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
+            style={{ 
+              background: choice === selectedChoice && !isChecked ? "var(--primary)" : "var(--surface-3)", 
+              color: choice === selectedChoice && !isChecked ? "#0d1f14" : "var(--text-muted)" 
+            }}>
             {i + 1}
           </span>
-          <span className={currentStep === "meaning-to-word" ? "font-jp text-lg" : ""}>{choice}</span>
+          <span className={currentStep === "meaning-to-word" ? "font-jp text-lg font-semibold" : "font-semibold"}>{choice}</span>
         </button>
       ))}
     </div>
   );
+
+  const progressPct = dueWords.length > 0 ? (doneCount / dueWords.length) * 100 : 0;
+  const srInfo = currentWord ? srColors[currentWord.srLevel || 1] : srColors[1];
 
   // ===== LOADING =====
   if (loading) return (
@@ -320,7 +402,6 @@ export default function ReviewPage() {
               <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>[{currentWord.type}]</div>
             </div>
             <ChoiceList />
-            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
@@ -331,17 +412,17 @@ export default function ReviewPage() {
               <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
                 Chọn nghĩa đúng của từ
               </p>
-              {currentWord.word !== currentWord.reading && (
-                <div className="text-base mb-1 font-jp" style={{ color: "var(--primary)" }}>
-                  {currentWord.reading}
-                </div>
-              )}
               <div className="font-jp text-5xl font-bold" style={{ color: "var(--text)" }}>
                 {currentWord.word}
               </div>
+              {/* Chỉ hiện cách đọc SAU KHI đã chọn đáp án */}
+              {answerStatus !== "idle" && currentWord.word !== currentWord.reading && (
+                <div className="text-base mt-2 font-jp animate-fade-in" style={{ color: "var(--primary)" }}>
+                  {currentWord.reading}
+                </div>
+              )}
             </div>
             <ChoiceList />
-            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
@@ -357,17 +438,24 @@ export default function ReviewPage() {
                 <SpeakButton text={currentWord.word} slow size="lg" />
               </div>
               {answerStatus !== "idle" ? (
-                <div className="text-sm font-jp animate-fade-in" style={{ color: "var(--text-muted)" }}>
-                  {currentWord.word} · {currentWord.reading}
+                // Sau khi chọn: hiện từ tiếng Nhật to rõ
+                <div className="animate-fade-in mt-2">
+                  <div className="font-jp text-3xl font-bold" style={{ color: "var(--text)" }}>
+                    {currentWord.word}
+                  </div>
+                  {currentWord.word !== currentWord.reading && (
+                    <div className="text-base font-jp mt-1" style={{ color: "var(--primary)" }}>
+                      {currentWord.reading}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-sm text-[var(--text-faint)]">
+                <div className="text-sm" style={{ color: "var(--text-faint)" }}>
                   Nghe từ và chọn nghĩa phù hợp
                 </div>
               )}
             </div>
             <ChoiceList />
-            {answerStatus !== "idle" && <ContinueButton />}
           </div>
         )}
 
@@ -376,58 +464,139 @@ export default function ReviewPage() {
           <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
               <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>
-                Gõ cách đọc bằng hiragana
+                Nhìn nghĩa — gõ cách đọc bằng hiragana
               </p>
-              <div className="text-3xl font-bold" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
-              <div className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>[{currentWord.type}]</div>
+              {/* Hiện từ tiếng Nhật + nút nghe */}
+              <div className="font-jp text-4xl font-bold mb-2" style={{ color: "var(--text)" }}>
+                {currentWord.word}
+              </div>
+              <div className="flex justify-center gap-3 mb-3">
+                <SpeakButton text={currentWord.word} size="sm" />
+                <SpeakButton text={currentWord.word} slow size="sm" />
+              </div>
+              <div className="text-xl font-semibold" style={{ color: "var(--text-muted)" }}>{currentWord.meaning}</div>
+              <div className="text-sm mt-0.5" style={{ color: "var(--text-faint)" }}>[{currentWord.type}]</div>
             </div>
 
             <input
+              ref={inputRef}
               type="text"
               value={typedAnswer}
-              onChange={(e) => { setTypedAnswer(e.target.value); setAnswerStatus("idle"); }}
-              onKeyDown={(e) => { if (e.key === "Enter" && typedAnswer.trim()) checkTyped(); }}
+              onChange={(e) => { 
+                if (!isChecked) {
+                  setTypedAnswer(e.target.value); 
+                  setAnswerStatus("idle"); 
+                }
+              }}
               placeholder="Ví dụ: たべる"
-              disabled={answerStatus !== "idle"}
+              disabled={isChecked}
               className="input text-center text-xl font-jp mb-4"
               style={{
                 borderWidth: "2px",
-                borderColor: answerStatus === "correct"
-                  ? "var(--primary)" : answerStatus === "wrong"
-                  ? "#ef4444" : "var(--border-color)",
-                background: answerStatus === "correct"
-                  ? "rgba(34,197,94,0.08)" : answerStatus === "wrong"
-                  ? "rgba(239,68,68,0.06)" : "var(--surface)",
+                borderColor: isChecked
+                  ? (answerStatus === "correct" ? "var(--primary)" : "#ef4444")
+                  : "var(--border-color)",
+                background: isChecked
+                  ? (answerStatus === "correct" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)")
+                  : "var(--surface)",
               }}
             />
-
-            {answerStatus === "wrong" && (
-              <div className="text-center text-sm mb-4" style={{ color: "#ef4444" }}>
-                Đáp án đúng:{" "}
-                <span className="font-bold text-lg font-jp" style={{ color: "var(--text)" }}>
-                  {currentWord.reading}
-                </span>
-              </div>
-            )}
-            {answerStatus === "correct" && (
-              <div className="text-center text-sm font-semibold mb-4" style={{ color: "var(--primary)" }}>
-                ✅ Chính xác!
-              </div>
-            )}
-
-            {answerStatus === "idle" ? (
-              <button
-                onClick={checkTyped}
-                disabled={!typedAnswer.trim()}
-                className="btn btn-primary w-full py-4 rounded-2xl"
-              >
-                Kiểm tra
-              </button>
-            ) : <ContinueButton />}
           </div>
         )}
 
       </div>
+
+      {/* ===== DUOLINGO BOTTOM BAR ===== */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 py-6 px-4 z-40 transition-all duration-300 border-t"
+        style={{
+          background: !isChecked 
+            ? "var(--surface)" 
+            : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)"),
+          borderColor: !isChecked
+            ? "var(--border-color)"
+            : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"),
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div className="max-w-md mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          
+          {/* Trạng thái kết quả */}
+          <div className="flex-1 flex items-start gap-3">
+            {isChecked && (
+              <>
+                <div className="text-4xl">
+                  {answerStatus === "correct" ? "🟢" : "🔴"}
+                </div>
+                <div>
+                  <h4 
+                    className="font-bold text-lg" 
+                    style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}
+                  >
+                    {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
+                  </h4>
+                  {answerStatus === "wrong" && (
+                    <p className="text-sm mt-1" style={{ color: "var(--text)" }}>
+                      Đáp án đúng: <span className="font-bold font-jp text-lg" style={{ color: "var(--primary)" }}>{currentStep === "type-reading" ? currentWord.reading : (currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning)}</span>
+                    </p>
+                  )}
+                  {/* Giải nghĩa & Audio (nếu sai hoặc đúng đều có thể xem lại) */}
+                  <div className="text-xs mt-2 space-y-1" style={{ color: "var(--text-muted)" }}>
+                    <div className="font-semibold font-jp text-sm text-[var(--text)]">
+                      {currentWord.word} ({currentWord.reading})
+                    </div>
+                    <div>Ý nghĩa: {currentWord.meaning}</div>
+                  </div>
+                </div>
+              </>
+            )}
+            {!isChecked && (
+              <p className="text-sm hidden sm:block" style={{ color: "var(--text-muted)" }}>
+                {currentStep === "type-reading" 
+                  ? "Nhập câu trả lời bằng hiragana rồi nhấn Kiểm tra" 
+                  : "Chọn đáp án phù hợp nhất ở phía trên"}
+              </p>
+            )}
+          </div>
+
+          {/* Nút hành động */}
+          <div className="flex-shrink-0">
+            {!isChecked ? (
+              <button
+                onClick={handleCheckAnswer}
+                disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
+                className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
+                style={{
+                  background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                    ? "var(--primary)"
+                    : "var(--surface-3)",
+                  color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                    ? "#0d1f14"
+                    : "var(--text-faint)",
+                  cursor: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                    ? "pointer"
+                    : "not-allowed",
+                }}
+              >
+                Kiểm tra
+              </button>
+            ) : (
+              <button
+                onClick={() => handleResult(answerStatus === "correct")}
+                className="btn w-full sm:w-auto px-12 py-4 rounded-2xl font-bold text-white transition-all"
+                style={{
+                  background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
+                  color: answerStatus === "correct" ? "#0d1f14" : "#fff",
+                }}
+              >
+                Tiếp tục
+              </button>
+            )}
+          </div>
+
+        </div>
+      </div>
+
     </div>
   );
 }
