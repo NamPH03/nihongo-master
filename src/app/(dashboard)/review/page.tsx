@@ -19,13 +19,7 @@ type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "list
 
 const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
 
-const srColors: Record<number, { bg: string; text: string }> = {
-  1: { bg: "rgba(239,68,68,0.12)",   text: "#ef4444" },
-  2: { bg: "rgba(249,115,22,0.12)",  text: "#f97316" },
-  3: { bg: "rgba(234,179,8,0.12)",   text: "#eab308" },
-  4: { bg: "rgba(59,130,246,0.12)",  text: "#3b82f6" },
-  5: { bg: "rgba(34,197,94,0.12)",   text: "#22c55e" },
-};
+
 
 // Kiểm tra chuỗi có chứa ký tự Nhật không (hiragana, katakana, kanji)
 function hasJapanese(str: string): boolean {
