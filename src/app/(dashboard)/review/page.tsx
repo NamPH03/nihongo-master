@@ -19,6 +19,14 @@ type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "list
 
 const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
 
+const stepLabel: Record<ReviewStep, string> = {
+  "meaning-to-word": "Nhìn nghĩa → Chọn từ",
+  "word-to-meaning": "Nhìn từ → Chọn nghĩa",
+  "type-reading": "Gõ cách đọc",
+  "listening": "Nghe → Chọn nghĩa",
+};
+
+
 
 
 // Kiểm tra chuỗi có chứa ký tự Nhật không (hiragana, katakana, kanji)
