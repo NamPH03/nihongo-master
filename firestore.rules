@@ -3,33 +3,60 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===== VOCABULARY =====
-    // Tất cả user đăng nhập đều được ĐỌC, chỉ Admin SDK mới được GHI
+    // Tất cả user đăng nhập đều được ĐỌC (cần cho dashboard, review, learn)
+    // Chỉ Admin SDK (server-side) mới được GHI
     match /vocabulary/{wordId} {
       allow read: if request.auth != null;
       allow write: if false;
     }
 
+    // ===== LESSONS =====
+    // Nội dung bài học — đọc công khai khi đã đăng nhập
+    match /lessons/{lessonId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // ===== USER DATA =====
-    // Mỗi user chỉ được đọc/ghi data của chính mình
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Đọc document user (profile) — cần cho leaderboard (đọc displayName của user khác)
+      allow read: if request.auth != null;
+      // Chỉ chính user đó mới được ghi vào profile của mình
+      allow write: if request.auth != null && request.auth.uid == userId;
 
       // Progress sub-collection (bao gồm cả "stats" document)
+      // Đọc progress của user khác cần thiết cho leaderboard
       match /progress/{docId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
       }
 
       // FCM tokens — chỉ owner được đọc/ghi
       match /fcmTokens/{tokenId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // Notification state — chỉ owner
+      match /notificationState/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
-    // ===== LEADERBOARD =====
-    // Cho phép đọc leaderboard công khai (đã denormalize), chỉ admin ghi
-    match /leaderboard/{userId} {
+    // ===== LEADERBOARD (denormalized cache) =====
+    // Nếu có collection leaderboard riêng thì cho phép đọc
+    match /leaderboard/{entryId} {
       allow read: if request.auth != null;
       allow write: if false;
+    }
+
+    // ===== USER WORDS (legacy) =====
+    // Collection cũ — chỉ owner được đọc/ghi
+    match /userWords/{docId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == resource.data.userId;
+      // Cho phép tạo mới nếu userId trong data khớp với auth
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
     }
   }
 }
