@@ -139,6 +139,7 @@ export default function StudySession({
   const [showKanjiHint, setShowKanjiHint] = useState<string | null>(null);
   const [showFurigana, setShowFurigana] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [showExitModal, setShowExitModal] = useState(false);
 
   useEffect(() => {
     if (words.length === 0) return;
@@ -331,65 +332,41 @@ export default function StudySession({
     );
   }
 
+  // Tính phần trăm tiến độ tổng quan buổi học
+  const overallProgressPct = sessionWords.length > 0 
+    ? Math.round((currentIndex / sessionWords.length) * 100) 
+    : 0;
+
   return (
-    <div className="pb-10">
-      <div className="mb-6">
-        {/* Tiến độ tổng bài */}
-        {alreadyLearnedCount > 0 && (
-          <div className="flex items-center gap-2 mb-3 px-1">
-            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
-              <div
-                className="h-1.5 rounded-full transition-all duration-700"
-                style={{ width: `${Math.round((alreadyLearnedCount / total) * 100)}%`, background: "var(--primary)", opacity: 0.4 }}
-              />
-            </div>
-            <span className="text-[10px] font-medium whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
-              {alreadyLearnedCount}/{total} đã học
-            </span>
-          </div>
-        )}
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {currentIndex + 1} / {sessionWords.length} từ mới
-          </span>
-          <span className="text-xs font-medium tabular" style={{ color: "var(--primary)" }}>
-            {Math.round(progress)}%
-          </span>
-        </div>
-        <div className="w-full h-1.5 rounded-full" style={{ background: "var(--surface-2)" }}>
+    <div className="pb-24">
+      {/* Duolingo Header: Nút pause màu vàng + Thanh tiến độ */}
+      <div className="flex items-center gap-4 mb-8">
+        <button
+          onClick={() => setShowExitModal(true)}
+          className="w-10 h-10 rounded-full flex items-center justify-center bg-yellow-500 hover:bg-yellow-600 transition-all text-white font-bold text-lg active:scale-90 flex-shrink-0 shadow-sm"
+          title="Tạm dừng học"
+        >
+          ⏸
+        </button>
+
+        {/* Thanh tiến độ */}
+        <div className="flex-1 h-4 rounded-full" style={{ background: "var(--surface-3)" }}>
           <div
-            className="h-1.5 rounded-full transition-all duration-700 ease-spring"
-            style={{ width: `${progress}%`, background: "var(--primary)" }}
+            className="h-4 rounded-full transition-all duration-700 ease-spring"
+            style={{ 
+              width: `${overallProgressPct || 5}%`, 
+              background: "linear-gradient(90deg, var(--primary), #4ade80)" 
+            }}
           />
         </div>
-        <div className="flex justify-center items-center gap-1.5 mt-3 flex-wrap">
-          {stepList(currentWord).map((step, i) => {
-            const stepIdx = stepList(currentWord).indexOf(currentStep);
-            const isPast = stepIdx > i;
-            const isCurrent = currentStep === step;
-            return (
-              <div key={step} className="flex items-center gap-1.5">
-                <div
-                  className="flex items-center gap-0.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all duration-300"
-                  style={
-                    isCurrent
-                      ? { background: "var(--primary)", color: "#0d1f14" }
-                      : isPast
-                      ? { background: "rgba(34,197,94,0.15)", color: "var(--primary)" }
-                      : { background: "var(--surface-2)", color: "var(--text-faint)" }
-                  }
-                >
-                  {isPast ? "✓" : i + 1}
-                  <span className="ml-0.5">{stepLabel[step]}</span>
-                </div>
-                {i < stepList(currentWord).length - 1 && (
-                  <div className="w-2.5 h-px" style={{ background: "var(--border-color)" }} />
-                )}
-              </div>
-            );
-          })}
-        </div>
+
+        {/* Số câu */}
+        <span className="text-sm font-bold tabular" style={{ color: "var(--text-muted)" }}>
+          {currentIndex + 1}/{sessionWords.length}
+        </span>
       </div>
+
+      {/* Ẩn tiến trình bước nhỏ phức tạp để giao diện tập trung và tối giản */}
 
       {currentStep === "flashcard" && (
         <div className="animate-scale-in">
@@ -626,12 +603,12 @@ export default function StudySession({
               {showKanjiHint ? `Thứ tự nét viết chữ ${showKanjiHint}` : "Chọn chữ Kanji để xem thứ tự nét"}
             </div>
             {showKanjiHint ? (
-              <div className="flex justify-center rounded-xl p-2 mx-auto border" style={{ maxWidth: "140px", backgroundColor: "var(--surface-3)", borderColor: "var(--border-color)" }}>
+              <div className="flex justify-center rounded-xl p-2 mx-auto border" style={{ maxWidth: "140px", backgroundColor: "#ffffff", borderColor: "var(--border-color)" }}>
                 <KanjiStrokeImage
                   char={showKanjiHint}
                   width={112}
                   height={112}
-                  className="rounded-lg filter dark:invert"
+                  className="rounded-lg"
                 />
               </div>
             ) : (
@@ -709,14 +686,14 @@ export default function StudySession({
               <div className="text-sm font-bold text-red-600">❌ Viết chưa chính xác! Cách viết đúng là:</div>
               <div className="grid grid-cols-2 gap-4 justify-items-center pt-2">
                 {kanjisInWord.map((kanji) => (
-                  <div key={kanji} className="flex flex-col items-center rounded-3xl p-3 border shadow-sm" style={{ backgroundColor: "var(--surface-3)", borderColor: "var(--border-color)" }}>
+                  <div key={kanji} className="flex flex-col items-center rounded-3xl p-3 border shadow-sm" style={{ backgroundColor: "#ffffff", borderColor: "var(--border-color)" }}>
                     <KanjiStrokeImage
                       char={kanji}
                       width={96}
                       height={96}
-                      className="w-24 h-24 filter dark:invert"
+                      className="w-24 h-24"
                     />
-                    <span className="font-jp text-lg font-bold mt-2" style={{ color: "var(--text)" }}>{kanji}</span>
+                    <span className="font-jp text-lg font-bold mt-2" style={{ color: "#000000" }}>{kanji}</span>
                   </div>
                 ))}
               </div>
@@ -781,9 +758,36 @@ export default function StudySession({
               <p className="text-xs mt-2 font-semibold" style={{ color: "var(--primary)" }}>✅ Hoàn thành 100% bài học!</p>
             )}
           </div>
-          <div className="flex flex-col gap-3">
-            <Link href="/review" className="btn btn-primary py-3 rounded-xl">📖 Ôn tập ngay</Link>
-            <Link href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-ghost py-3 rounded-xl">← Bài học</Link>
+        </div>
+      )}
+
+      {/* ===== EXIT CONFIRM MODAL (DUOLINGO STYLE) ===== */}
+      {showExitModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[var(--surface)] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl border" style={{ borderColor: "var(--border-color)" }}>
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-3">🍊</div>
+              <h3 className="text-xl font-bold mb-2" style={{ color: "var(--text)" }}>Tạm dừng học?</h3>
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                Tiến trình học bài này của bạn sẽ không được lưu nếu bạn thoát ra lúc này.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setShowExitModal(false)}
+                className="btn btn-primary w-full py-4 rounded-2xl font-bold text-sm"
+              >
+                🟢 Ở lại học tiếp
+              </button>
+              <button
+                onClick={() => window.location.href = `/learn/${encodeURIComponent(courseId)}`}
+                className="w-full py-4 rounded-2xl font-bold text-sm border text-red-500 hover:bg-red-500/5 transition-colors"
+                style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
+              >
+                Thoát
+              </button>
+            </div>
           </div>
         </div>
       )}

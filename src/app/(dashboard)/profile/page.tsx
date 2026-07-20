@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { getProgress, ProgressData } from "@/lib/progress";
-import { User, Settings, Shield, Award, Edit3, Save, Camera, ChevronDown, ChevronUp, Lock } from "lucide-react";
+import { User, Settings, Shield, Award, Edit3, Save, Camera, ChevronDown, ChevronUp, Lock, LogOut } from "lucide-react";
 import type { User as FirebaseUser } from "firebase/auth";
 
 export default function ProfilePage() {
@@ -376,6 +376,25 @@ export default function ProfilePage() {
               Streak: {progress?.streak || 0} ngày
             </span>
           </div>
+
+          {/* Đăng xuất tài khoản */}
+          <button
+            onClick={async () => {
+              const { logout } = await import("@/lib/auth");
+              await logout();
+              router.push("/");
+            }}
+            className="w-full flex items-center justify-between p-3.5 rounded-xl transition-all duration-200 bg-red-500/5 hover:bg-red-500/10 active:scale-98 border border-red-500/10"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 flex items-center justify-center">
+                <LogOut size={18} />
+              </div>
+              <span className="text-sm font-bold text-red-500">
+                Đăng xuất tài khoản
+              </span>
+            </div>
+          </button>
 
         </div>
 

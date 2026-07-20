@@ -348,45 +348,42 @@ export default function ReviewPage() {
     </div>
   );
 
+  const [showExitModal, setShowExitModal] = useState(false);
+
   return (
-    <div className="min-h-[100dvh] bg-page">
-      <Navbar userEmail="" />
+    <div className="min-h-[100dvh] bg-page pb-32">
+      {/* Duolingo style Header: Ẩn Navbar để tập trung */}
+      <div className="max-w-xl mx-auto px-4 pt-6 pb-2 flex items-center gap-4">
+        {/* Nút pause màu vàng */}
+        <button
+          onClick={() => setShowExitModal(true)}
+          className="w-10 h-10 rounded-full flex items-center justify-center bg-yellow-500 hover:bg-yellow-600 transition-all text-white font-bold text-lg active:scale-90 flex-shrink-0 shadow-sm"
+          title="Tạm dừng học"
+        >
+          ⏸
+        </button>
+
+        {/* Thanh tiến độ */}
+        <div className="flex-1 h-4 rounded-full" style={{ background: "var(--surface-3)" }}>
+          <div
+            className="h-4 rounded-full transition-all duration-700 ease-spring"
+            style={{ 
+              width: `${progressPct}%`, 
+              background: "linear-gradient(90deg, var(--primary), #4ade80)" 
+            }}
+          />
+        </div>
+
+        {/* Số đếm câu */}
+        <span className="text-sm font-bold tabular" style={{ color: "var(--text-muted)" }}>
+          {currentIndex + 1}/{dueWords.length}
+        </span>
+      </div>
 
       <div className="max-w-md mx-auto px-4 py-6">
 
-        {/* Header row */}
-        <div className="flex justify-between items-center mb-4 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-              Ôn tập
-            </span>
-            {currentWord && (
-              <span className="badge" style={{ background: srInfo.bg, color: srInfo.text }}>
-                Mức {currentWord.srLevel || 1}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {forgotThisWord && (
-              <span className="text-xs" style={{ color: "#f97316" }}>
-                ⚠️ Ôn thêm {remainingSteps.length} bước
-              </span>
-            )}
-            <span className="text-xs font-medium tabular" style={{ color: "var(--text-muted)" }}>
-              {currentIndex + 1} / {dueWords.length}
-            </span>
-          </div>
-        </div>
-
-        {/* Progress bar */}
         <div className="mb-4">
-          <div className="w-full h-1.5 rounded-full" style={{ background: "var(--surface-2)" }}>
-            <div
-              className="h-1.5 rounded-full transition-all duration-700 ease-spring"
-              style={{ width: `${progressPct}%`, background: "var(--primary)" }}
-            />
-          </div>
-          <p className="text-xs mt-1.5" style={{ color: "var(--text-faint)" }}>
+          <p className="text-xs mt-1.5 font-bold uppercase tracking-wider text-[var(--primary)]" style={{ color: "var(--primary)" }}>
             {stepLabel[currentStep]}
           </p>
         </div>
@@ -560,26 +557,39 @@ export default function ReviewPage() {
           </div>
 
           {/* Nút hành động */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex flex-col items-center gap-2">
             {!isChecked ? (
-              <button
-                onClick={handleCheckAnswer}
-                disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
-                className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
-                style={{
-                  background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
-                    ? "var(--primary)"
-                    : "var(--surface-3)",
-                  color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
-                    ? "#0d1f14"
-                    : "var(--text-faint)",
-                  cursor: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
-                    ? "pointer"
-                    : "not-allowed",
-                }}
-              >
-                Kiểm tra
-              </button>
+              <>
+                <button
+                  onClick={handleCheckAnswer}
+                  disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
+                  className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
+                  style={{
+                    background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                      ? "var(--primary)"
+                      : "var(--surface-3)",
+                    color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                      ? "#0d1f14"
+                      : "var(--text-faint)",
+                    cursor: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice)
+                      ? "pointer"
+                      : "not-allowed",
+                  }}
+                >
+                  Kiểm tra
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedAnswer(selectedChoice || "");
+                    setAnswerStatus("wrong");
+                    setIsChecked(true);
+                  }}
+                  className="text-xs font-semibold underline py-1 transition-colors hover:text-red-500"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Tôi không nhớ từ này
+                </button>
+              </>
             ) : (
               <button
                 onClick={() => handleResult(answerStatus === "correct")}
@@ -596,6 +606,37 @@ export default function ReviewPage() {
 
         </div>
       </div>
+
+      {/* ===== EXIT CONFIRM MODAL (DUOLINGO STYLE) ===== */}
+      {showExitModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[var(--surface)] w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl border" style={{ borderColor: "var(--border-color)" }}>
+            <div className="text-center mb-6">
+              <div className="text-5xl mb-3">🍊</div>
+              <h3 className="text-xl font-bold mb-2" style={{ color: "var(--text)" }}>Tạm dừng học?</h3>
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                Tiến trình bài ôn này sẽ không được lưu nếu bạn thoát ra lúc này.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setShowExitModal(false)}
+                className="btn btn-primary w-full py-4 rounded-2xl font-bold text-sm"
+              >
+                🟢 Ở lại học tiếp
+              </button>
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="w-full py-4 rounded-2xl font-bold text-sm border text-red-500 hover:bg-red-500/5 transition-colors"
+                style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
+              >
+                Thoát
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

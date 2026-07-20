@@ -97,34 +97,11 @@ export default function LessonPage() {
   const isRandomOrder = RANDOM_COURSES.includes(courseId);
 
   return (
-    <div className="min-h-[100dvh] bg-page pb-24 md:pb-10">
-      <Navbar userEmail={userEmail} />
+    <div className="min-h-[100dvh] bg-page pb-12">
+      {/* Chỉ hiển thị Navbar khi đang tải hoặc lỗi */}
+      {(loading || notFound) && <Navbar userEmail={userEmail} />}
+      
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <div className="mb-6 animate-fade-up">
-          <p className="text-sm uppercase tracking-[0.2em] text-[var(--text-muted)]">Bài học</p>
-          <h1 className="text-3xl font-bold" style={{ color: "var(--text)" }}>{lessonTitle || lessonId}</h1>
-          {/* Badge tiến độ bài */}
-          {!loading && words.length > 0 && (
-            <div className="flex items-center gap-3 mt-3">
-              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
-                <div
-                  className="h-1.5 rounded-full transition-all duration-700"
-                  style={{
-                    width: `${Math.round((learnedWordIds.size / words.length) * 100)}%`,
-                    background: learnedWordIds.size === words.length ? "#22c55e" : "var(--primary)",
-                  }}
-                />
-              </div>
-              <span className="text-xs font-medium whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
-                {learnedWordIds.size}/{words.length} từ đã học
-              </span>
-            </div>
-          )}
-          <div className="flex flex-wrap gap-3 mt-4">
-            <a href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-ghost rounded-2xl py-3">← Bài học</a>
-          </div>
-        </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="flex flex-col items-center gap-3">

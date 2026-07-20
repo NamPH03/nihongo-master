@@ -148,16 +148,6 @@ export default function Navbar({}: NavbarProps) {
                 )}
               </Link>
             )}
-
-            {isLoggedIn && (
-              <button
-                onClick={handleLogout}
-                className="btn btn-ghost text-xs px-2.5 py-1.5 flex items-center gap-1 text-red-500 hover:bg-red-500/10 rounded-xl"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Đăng xuất</span>
-              </button>
-            )}
           </div>
 
         </div>
