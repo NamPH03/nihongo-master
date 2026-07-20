@@ -19,7 +19,9 @@ function getTodayVN(): string {
 }
 
 function getDaysSinceLastStudy(lastStudyDate: string): number {
-  if (!lastStudyDate) return 999;
+  // Nếu chưa có lastStudyDate → trả về -1 (không gửi nhắc học)
+  // Tránh bug "999 ngày" khi user chưa học lần nào hoặc field chưa được sync
+  if (!lastStudyDate) return -1;
   const todayVN = getTodayVN();
   const todayMs = new Date(todayVN).getTime();
   const lastMs = new Date(lastStudyDate).getTime();
@@ -147,32 +149,32 @@ export async function GET(req: NextRequest) {
       let notification: { title: string; body: string } | null = null;
       let notifUrl = '/dashboard';
 
-      // --- Ưu tiên 1: Nhắc ôn tập (khi số từ đến hạn là bội của 10) ---
-      if (dueCount > 0 && dueCount % 10 === 0) {
-        const lastNotifiedThreshold = notifState.lastNotifiedDueThreshold || 0;
+      // --- Ưu tiên 1: Nhắc ôn tập (khi số từ đến hạn là bội của 10: 10, 20, 30...) ---
+      if (dueCount >= 10 && dueCount % 10 === 0) {
         const lastNotifiedDate = notifState.lastNotifiedDueDate || '';
-        const lastDueCount = notifState.lastDueCount || 0;
+        const lastNotifiedMilestone = notifState.lastNotifiedDueMilestone || 0;
 
-        // Gửi khi milestone mới được chạm tới (count tăng lên) hoặc khi qua ngày mới.
-        const isNewMilestone = dueCount > lastDueCount;
         const isNewDay = lastNotifiedDate !== todayVN;
+        // Cùng ngày: notify nếu milestone KHÁC với lần đã gửi
+        // → xử lý được case: 20 → review → 0 → học → 10 từ đến hạn lại
+        const isDifferentMilestone = !isNewDay && dueCount !== lastNotifiedMilestone;
 
-        if ((isNewMilestone && dueCount !== lastNotifiedThreshold) || isNewDay) {
+        if (isNewDay || isDifferentMilestone) {
           notification = getReviewReminderMessage(dueCount);
-          stateUpdates.lastNotifiedDueThreshold = dueCount;
+          stateUpdates.lastNotifiedDueMilestone = dueCount;
           stateUpdates.lastNotifiedDueDate = todayVN;
           notifUrl = '/review';
         }
       }
-      stateUpdates.lastDueCount = dueCount;
 
       // --- Ưu tiên 2: Nhắc học (nếu chưa gửi nhắc ôn tập hôm nay) ---
       if (!notification) {
-        const lastStudyDate: string = stats.lastStudyDate || '';
+        // Ưu tiên dùng lastStudyDate, fallback sang lastReviewDate (nếu có)
+        const lastStudyDate: string = stats.lastStudyDate || stats.lastReviewDate || '';
         const daysSince = getDaysSinceLastStudy(lastStudyDate);
         const lastReminderDate: string = notifState.lastStudyReminderDate || '';
 
-        // Chỉ gửi 1 lần/ngày
+        // daysSince >= 1: chưa học hôm nay; -1: chưa bao giờ học → không nhắc
         if (daysSince >= 1 && lastReminderDate !== todayVN) {
           notification = getStudyReminderMessage(daysSince);
           stateUpdates.lastStudyReminderDate = todayVN;
@@ -184,11 +186,21 @@ export async function GET(req: NextRequest) {
       if (notification && tokens.length > 0) {
         const result = await adminMessaging.sendEachForMulticast({
           tokens,
-          // Data-only: prevent FCM from auto-rendering a duplicate notification.
-          data: {
+          // Dùng notification field để FCM tự render popup trên iOS/Android/Web
+          notification: {
             title: notification.title,
             body: notification.body,
-            url: notifUrl,
+          },
+          webpush: {
+            notification: {
+              icon: '/icon-192.png',
+              badge: '/icon-192.png',
+              tag: 'nihongo-master',
+              requireInteraction: false,
+            },
+            fcmOptions: {
+              link: notifUrl,
+            },
           },
           apns: {
             payload: {

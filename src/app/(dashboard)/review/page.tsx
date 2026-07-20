@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { promoteWord, demoteWord, updateProgress, getDueWords } from "@/lib/progress";
+import { promoteWord, demoteWord, markStudiedToday, getDueWords } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
@@ -144,7 +144,7 @@ export default function ReviewPage() {
     if (!user) return;
     if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
     else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
-    await updateProgress(user.uid, 0);
+    await markStudiedToday(user.uid);
     setDoneCount((p) => p + 1);
     if (currentIndex + 1 >= dueWords.length) { setFinished(true); }
     else { const nextIdx = currentIndex + 1; setCurrentIndex(nextIdx); initWord(dueWords[nextIdx], []); }

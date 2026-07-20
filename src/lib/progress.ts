@@ -277,6 +277,33 @@ export async function updateProgress(
   return updated;
 }
 
+// Đánh dấu user đã học/ôn tập hôm nay mà không tăng totalLearned
+// Dùng cho review session: cập nhật lastStudyDate + streak để tránh bug "999 ngày"
+export async function markStudiedToday(userId: string): Promise<void> {
+  const ref = userStatsRef(userId);
+  const current = await getProgress(userId);
+  const today = getTodayString();
+  const yesterday = getYesterdayString();
+
+  // Nếu đã cập nhật hôm nay rồi thì bỏ qua
+  if (current.lastStudyDate === today) return;
+
+  let newStreak = current.streak;
+  if (current.lastStudyDate === yesterday) {
+    newStreak = current.streak + 1;
+  } else if (!current.lastStudyDate) {
+    newStreak = 1;
+  } else {
+    // Đã nghỉ > 1 ngày → reset streak về 1
+    newStreak = 1;
+  }
+
+  await updateDoc(ref, {
+    lastStudyDate: today,
+    streak: newStreak,
+  });
+}
+
 // ===== USER WORD STATUS FOR DASHBOARD =====
 export type UserWordStatus = {
   id: string;
