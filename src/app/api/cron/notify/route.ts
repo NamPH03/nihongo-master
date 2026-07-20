@@ -149,19 +149,19 @@ export async function GET(req: NextRequest) {
       let notification: { title: string; body: string } | null = null;
       let notifUrl = '/dashboard';
 
-      // --- Ưu tiên 1: Nhắc ôn tập (khi số từ đến hạn là bội của 10: 10, 20, 30...) ---
-      if (dueCount >= 10 && dueCount % 10 === 0) {
+      // --- Ưu tiên 1: Nhắc ôn tập (khi có từ đến hạn) ---
+      if (dueCount > 0) {
         const lastNotifiedDate = notifState.lastNotifiedDueDate || '';
-        const lastNotifiedMilestone = notifState.lastNotifiedDueMilestone || 0;
+        const lastNotifiedCount = notifState.lastNotifiedDueCount || 0;
 
         const isNewDay = lastNotifiedDate !== todayVN;
-        // Cùng ngày: notify nếu milestone KHÁC với lần đã gửi
-        // → xử lý được case: 20 → review → 0 → học → 10 từ đến hạn lại
-        const isDifferentMilestone = !isNewDay && dueCount !== lastNotifiedMilestone;
+        // Cùng ngày: chỉ gửi nếu số từ đến hạn TĂNG so với lần thông báo trước
+        // → tránh spam khi user đã được nhắc rồi nhưng chưa ôn
+        const isDueCountIncreased = !isNewDay && dueCount > lastNotifiedCount;
 
-        if (isNewDay || isDifferentMilestone) {
+        if (isNewDay || isDueCountIncreased) {
           notification = getReviewReminderMessage(dueCount);
-          stateUpdates.lastNotifiedDueMilestone = dueCount;
+          stateUpdates.lastNotifiedDueCount = dueCount;
           stateUpdates.lastNotifiedDueDate = todayVN;
           notifUrl = '/review';
         }

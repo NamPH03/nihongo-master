@@ -232,6 +232,51 @@ export default function StudySession({
     }
   };
 
+  // Phím tắt bàn phím
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (loading || currentIndex >= sessionWords.length) return;
+
+      // Nhấn Enter
+      if (e.key === "Enter") {
+        if (currentStep === "flashcard") {
+          // Bấm Enter ở flashcard thì lật thẻ, hoặc bấm nút Tiếp tục dưới
+          if (!isFlipped) setIsFlipped(true);
+          else nextStep();
+        } else if (currentStep === "meaning-to-word" || currentStep === "listening") {
+          if (answerStatus !== "idle") {
+            nextStep();
+          }
+        } else if (currentStep === "kanji") {
+          nextStep();
+        } else if (currentStep === "write-kanji") {
+          if (answerStatus !== "idle") {
+            nextStep();
+          } else {
+            if (recognizedCandidates.length > 0) checkDrawingKanji();
+          }
+        }
+        return;
+      }
+
+      // Nhấn phím 1, 2, 3, 4 ở các step trắc nghiệm
+      if (
+        !loading &&
+        answerStatus === "idle" &&
+        ["1", "2", "3", "4"].includes(e.key) &&
+        (currentStep === "meaning-to-word" || currentStep === "listening")
+      ) {
+        const idx = parseInt(e.key) - 1;
+        if (choices[idx]) {
+          handleChoice(choices[idx]);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loading, currentIndex, sessionWords, currentStep, isFlipped, answerStatus, choices, recognizedCandidates]);
+
   const handleSkipWord = async () => {
     await goNextWord();
   };

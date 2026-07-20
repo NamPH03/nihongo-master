@@ -43,8 +43,8 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
         if (ctx) {
           ctx.lineCap = "round";
           ctx.lineJoin = "round";
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = "var(--text)";
+          ctx.lineWidth = 4.5;
+          ctx.strokeStyle = "#1a1a1a"; // Màu đen đậm cố định trên nền trắng
           // Vẽ lại các nét vẽ cũ sau khi scale
           ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, rect.width, rect.height);
         }
@@ -89,6 +89,11 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
 
     ctx.beginPath();
     ctx.moveTo(x, y);
+    // Thiết lập màu sắc và nét vẽ cố định
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 4.5;
+    ctx.strokeStyle = "#1a1a1a"; // Màu đen đậm cố định
     setIsDrawing(true);
 
     const time = Date.now();
@@ -201,7 +206,7 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
         </button>
       </div>
 
-      <div className="relative w-full max-w-[360px] mx-auto aspect-square rounded-xl overflow-hidden" style={{ background: "var(--surface-2)", border: "1px dashed var(--border-strong)" }}>
+      <div className="relative w-full max-w-[360px] mx-auto aspect-square rounded-xl overflow-hidden shadow-inner" style={{ background: "#ffffff", border: "1px dashed var(--border-strong)" }}>
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}
