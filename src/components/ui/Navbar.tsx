@@ -8,16 +8,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-import { logout, onAuthChange } from "@/lib/auth";
+import { onAuthChange } from "@/lib/auth";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { useRouter } from "next/navigation";
 import { 
   Sparkles, 
   Repeat, 
   Search, 
   BarChart2, 
-  LogOut,
   Trophy,
   BookOpen,
   User
@@ -29,7 +27,6 @@ interface NavbarProps {
 
 export default function Navbar({}: NavbarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [photoURL, setPhotoURL] = useState<string>("");
 
@@ -54,10 +51,6 @@ export default function Navbar({}: NavbarProps) {
     return () => unsub();
   }, []);
 
-  const handleLogout = async () => {
-    await logout();
-    router.push("/");
-  };
 
   // Menu trên Desktop (Đầy đủ)
   const desktopLinks = [

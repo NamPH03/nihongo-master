@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
-import Navbar from "@/components/ui/Navbar";
+
 
 type Vocabulary = {
   id: string; word: string; reading: string; type: string; meaning: string; level: string;
@@ -18,12 +18,6 @@ type ReviewWord = Vocabulary & { wordId: string; srLevel: number; nextReview: st
 type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening";
 
 const ALL_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "type-reading", "listening"];
-const stepLabel: Record<ReviewStep, string> = {
-  "meaning-to-word": "Nhìn nghĩa → Chọn từ",
-  "word-to-meaning": "Nhìn từ → Chọn nghĩa",
-  "type-reading": "Gõ cách đọc",
-  "listening": "Nghe → Chọn nghĩa",
-};
 
 const srColors: Record<number, { bg: string; text: string }> = {
   1: { bg: "rgba(239,68,68,0.12)",   text: "#ef4444" },
@@ -77,6 +71,8 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [finished, setFinished] = useState(false);
   const router = useRouter();
+  // ===== STATE =====
+  const [showExitModal, setShowExitModal] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -230,6 +226,7 @@ export default function ReviewPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus]);
 
   // Tự động focus vào ô input khi ở màn hình gõ chữ (đặt ở top-level)
@@ -294,7 +291,6 @@ export default function ReviewPage() {
   );
 
   const progressPct = dueWords.length > 0 ? (doneCount / dueWords.length) * 100 : 0;
-  const srInfo = currentWord ? srColors[currentWord.srLevel || 1] : srColors[1];
 
   // ===== LOADING =====
   if (loading) return (
@@ -348,7 +344,6 @@ export default function ReviewPage() {
     </div>
   );
 
-  const [showExitModal, setShowExitModal] = useState(false);
 
   return (
     <div className="min-h-[100dvh] bg-page pb-32">

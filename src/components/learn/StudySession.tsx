@@ -103,14 +103,6 @@ function generateChoices(
   return choices.sort(() => Math.random() - 0.5);
 }
 
-const stepLabel: Record<Step, string> = {
-  flashcard: "Thẻ",
-  "meaning-to-word": "Chọn từ",
-  listening: "Nghe",
-  kanji: "Học Kanji",
-  "write-kanji": "Viết chữ",
-  result: "",
-};
 
 interface StudySessionProps {
   words: Vocabulary[];
@@ -275,6 +267,7 @@ export default function StudySession({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, currentIndex, sessionWords, currentStep, isFlipped, answerStatus, choices, recognizedCandidates]);
 
   const handleSkipWord = async () => {
@@ -311,16 +304,6 @@ export default function StudySession({
     return { opacity: 0.35 };
   };
 
-  const stepList = (word: Vocabulary): Step[] => {
-    const steps: Step[] = ["flashcard", "meaning-to-word", "listening"];
-    if (word && hasKanji(word.word)) {
-      steps.push("kanji");
-      steps.push("write-kanji");
-    }
-    return steps;
-  };
-
-  const progress = sessionWords.length > 0 ? (learnedCount / sessionWords.length) * 100 : 0;
   const kanjisInWord = currentWord ? getKanjiChars(currentWord.word) : [];
 
   if (loading) {

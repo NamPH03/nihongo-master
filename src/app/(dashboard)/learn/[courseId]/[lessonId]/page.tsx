@@ -33,7 +33,6 @@ export default function LessonPage() {
   const courseId = Array.isArray(params?.courseId) ? params?.courseId[0] || "" : params?.courseId || "";
   const lessonId = Array.isArray(params?.lessonId) ? params?.lessonId[0] || "" : params?.lessonId || "";
   const [words, setWords] = useState<Vocabulary[]>([]);
-  const [lessonTitle, setLessonTitle] = useState("");
   const [learnedWordIds, setLearnedWordIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -76,7 +75,6 @@ export default function LessonPage() {
           if (!firstLessonTitle) firstLessonTitle = data.lessonTitle || lessonId;
         });
 
-        setLessonTitle(firstLessonTitle);
         setWords(dataWords);
 
         // Chỉ lấy ID của các từ TRONG BÀI HỌC NÀY đã được learned
