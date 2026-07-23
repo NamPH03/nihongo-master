@@ -186,29 +186,11 @@ export async function GET(req: NextRequest) {
       if (notification && tokens.length > 0) {
         const result = await adminMessaging.sendEachForMulticast({
           tokens,
-          // Dùng notification field để FCM tự render popup trên iOS/Android/Web
-          notification: {
+          // Sử dụng data-only payload để service worker tự render qua showNotification giống test-notify/route.ts
+          data: {
             title: notification.title,
             body: notification.body,
-          },
-          webpush: {
-            notification: {
-              icon: '/icon-192.png',
-              badge: '/icon-192.png',
-              tag: 'nihongo-master',
-              requireInteraction: false,
-            },
-            fcmOptions: {
-              link: notifUrl,
-            },
-          },
-          apns: {
-            payload: {
-              aps: {
-                sound: 'default',
-                badge: dueCount > 0 ? dueCount : undefined,
-              },
-            },
+            url: notifUrl,
           },
         });
 
