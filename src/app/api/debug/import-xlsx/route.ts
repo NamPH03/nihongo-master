@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
   const isLocal = req.headers.get("host")?.includes("localhost") || req.headers.get("host")?.includes("127.0.0.1");
+  const clear = req.nextUrl.searchParams.get("clear") === "true";
 
   if (secret !== cronSecret && !isLocal) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,6 +43,32 @@ export async function GET(req: NextRequest) {
     const db = getAdminDb();
     const vocabRef = db.collection("vocabulary");
 
+    // Nếu có tham số clear=true, xóa sạch từ vựng IT cũ trước khi import
+    if (clear) {
+      const oldDocs = await vocabRef
+        .where("courseId", "in", ["tu-vung-cntt", "tu-vung-it"])
+        .get();
+      
+      const chunks = [];
+      const batchLimit = 500;
+      let tempBatch = db.batch();
+      let count = 0;
+
+      for (const d of oldDocs.docs) {
+        tempBatch.delete(d.ref);
+        count++;
+        if (count === batchLimit) {
+          chunks.push(tempBatch.commit());
+          tempBatch = db.batch();
+          count = 0;
+        }
+      }
+      if (count > 0) {
+        chunks.push(tempBatch.commit());
+      }
+      await Promise.all(chunks);
+    }
+
     let importedCount = 0;
     let skippedCount = 0;
     const errors: string[] = [];
@@ -60,7 +87,7 @@ export async function GET(req: NextRequest) {
       let courseId = "tu-vung-it";
       let lessonId = "lesson-01";
       let lessonTitle = "Bài học IT";
-      let courseName = "Từ vựng chuyên ngành IT";
+      let courseName = "Từ vựng IT";
 
       // Kiểm tra xem dữ liệu có bị gom thành 1 chuỗi phân tách bằng dấu phẩy không
       const keys = Object.keys(row);
@@ -80,8 +107,7 @@ export async function GET(req: NextRequest) {
           courseId = parts[7].trim();
           lessonId = parts[8].trim();
           lessonTitle = parts[9].trim();
-          // Lấy courseName dựa trên courseId hoặc lessonTitle để thân thiện với giao diện
-          courseName = lessonTitle.split(":")[0]?.trim() || "Từ vựng chuyên ngành IT";
+          courseName = "Từ vựng IT";
         }
       } else {
         word = String(row.word || row.Word || "").trim();
@@ -94,7 +120,7 @@ export async function GET(req: NextRequest) {
         courseId = String(row.courseId || row.CourseId || "tu-vung-it").trim();
         lessonId = String(row.lessonId || row.LessonId || "lesson-01").trim();
         lessonTitle = String(row.lessonTitle || row.LessonTitle || "Bài học IT").trim();
-        courseName = String(row.courseName || row.CourseName || "Từ vựng chuyên ngành IT").trim();
+        courseName = "Từ vựng IT";
       }
 
       if (!word || !reading) {
@@ -102,36 +128,48 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Check trùng
-      const existing = await vocabRef
-        .where("word", "==", word)
-        .where("reading", "==", reading)
-        .limit(1)
-        .get();
+      // Tạo document ID cố định để tránh trùng và dễ đồng bộ
+      const cleanWord = word.replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, "_");
+      const docId = `IT_${lessonId}_${cleanWord}`;
+      const docRef = vocabRef.doc(docId);
+      const docSnap = await docRef.get();
 
-      if (!existing.empty) {
+      if (docSnap.exists) {
+        await docRef.update({
+          word,
+          reading,
+          meaning,
+          type,
+          level,
+          example,
+          exampleMeaning,
+          courseId,
+          lessonId,
+          lessonTitle,
+          courseName,
+          updatedAt: new Date().toISOString(),
+        });
         skippedCount++;
-        continue;
+      } else {
+        await docRef.set({
+          wordId: docId,
+          word,
+          reading,
+          meaning,
+          type,
+          level,
+          example,
+          exampleMeaning,
+          courseId,
+          lessonId,
+          lessonTitle,
+          courseName,
+          status: "new",
+          source: "import",
+          createdAt: new Date().toISOString(),
+        });
+        importedCount++;
       }
-
-      await vocabRef.add({
-        word,
-        reading,
-        meaning,
-        type,
-        level,
-        example,
-        exampleMeaning,
-        courseId,
-        lessonId,
-        lessonTitle,
-        courseName,
-        status: "new",
-        source: "import",
-        createdAt: new Date().toISOString(),
-      });
-
-      importedCount++;
     }
 
     return NextResponse.json({

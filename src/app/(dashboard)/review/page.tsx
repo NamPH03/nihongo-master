@@ -244,6 +244,14 @@ export default function ReviewPage() {
   }, [dueWords, allWords, initWord]);
 
   const currentWord = dueWords[currentIndex];
+
+  // Phát âm thanh khi vừa kiểm tra xong đáp án
+  useEffect(() => {
+    if (isChecked && currentWord) {
+      speakJapanese(currentWord.word, false);
+    }
+  }, [isChecked, currentWord]);
+
   const kanjiChars = currentWord ? getKanjiChars(currentWord.word) : [];
 
   // ─── Confirm một ký tự kanji đã vẽ ───
@@ -265,8 +273,6 @@ export default function ReviewPage() {
 
   // ─── Handle result (tiếp tục / sai) ───
   const handleResult = async (remembered: boolean) => {
-    // Phát lại âm thanh từ sau mỗi lần tiếp tục
-    if (currentWord) speakJapanese(currentWord.word, false);
 
     if (!remembered) {
       setForgotThisWord(true);
