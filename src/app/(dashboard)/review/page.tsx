@@ -642,7 +642,7 @@ export default function ReviewPage() {
                   {currentWord.srLevel <= 4 && kanjiChars[currentKanjiIdx] && (() => {
                     const hex = kanjiChars[currentKanjiIdx].codePointAt(0)?.toString(16).padStart(5, "0");
                     if (!hex) return null;
-                    const strokeSrc = `https://raw.githubusercontent.com/KanjiVG/kanjivg/master/kanji/${hex}.svg`;
+                    const strokeSrc = `/kanji/${hex}.svg`;
                     // eslint-disable-next-line @next/next/no-img-element
                     return <img src={strokeSrc} alt="" aria-hidden className="absolute inset-0 w-full h-full select-none" style={{ opacity: 0.18, objectFit: "contain", pointerEvents: "none" }} />;
                   })()}

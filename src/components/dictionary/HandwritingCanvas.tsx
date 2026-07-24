@@ -7,9 +7,10 @@ import { Eraser, X, Edit3 } from "lucide-react";
 type Props = {
   onSelectWord: (word: string) => void;
   onClose: () => void;
+  strokeGuideChar?: string;
 };
 
-export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
+export default function HandwritingCanvas({ onSelectWord, onClose, strokeGuideChar }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [candidates, setCandidates] = useState<string[]>([]);
@@ -207,6 +208,14 @@ export default function HandwritingCanvas({ onSelectWord, onClose }: Props) {
       </div>
 
       <div className="relative w-full max-w-[360px] mx-auto aspect-square rounded-xl overflow-hidden shadow-inner" style={{ background: "#ffffff", border: "1px dashed var(--border-strong)" }}>
+        {/* Ảnh hướng dẫn nét vẽ mờ — hiện khi được cấp strokeGuideChar */}
+        {strokeGuideChar && (() => {
+          const hex = strokeGuideChar.codePointAt(0)?.toString(16).padStart(5, "0");
+          if (!hex) return null;
+          const src = `/kanji/${hex}.svg`;
+          // eslint-disable-next-line @next/next/no-img-element
+          return <img src={src} alt="" aria-hidden className="absolute inset-0 w-full h-full select-none" style={{ opacity: 0.18, objectFit: "contain", pointerEvents: "none" }} />;
+        })()}
         <canvas
           ref={canvasRef}
           onMouseDown={startDrawing}

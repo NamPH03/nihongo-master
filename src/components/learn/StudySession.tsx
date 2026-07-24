@@ -534,16 +534,16 @@ export default function StudySession({
             })}
           </div>
           {answerStatus !== "idle" && (
-            <button
-              onClick={nextStep}
-              className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
-              style={answerStatus === "correct"
-                ? { background: "var(--primary)", color: "#0d1f14" }
-                : { background: "#ef4444", color: "#fff" }
-              }
-            >
-              {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-            </button>
+            <div className="mt-4 p-3 rounded-xl" style={{ background: answerStatus === "correct" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)", borderLeft: `3px solid ${answerStatus === "correct" ? "var(--primary)" : "#ef4444"}` }}>
+              <div className="text-xs font-semibold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                {answerStatus === "correct" ? "✅ Chính xác!" : "❌ Chưa đúng"}
+              </div>
+              {answerStatus === "wrong" && (
+                <div className="text-sm mt-1" style={{ color: "var(--text)" }}>
+                  Đáp án: <span className="font-bold font-jp" style={{ color: "var(--primary)" }}>{currentWord.word}</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -583,16 +583,16 @@ export default function StudySession({
             ))}
           </div>
           {answerStatus !== "idle" && (
-            <button
-              onClick={nextStep}
-              className="btn w-full py-4 mt-5 rounded-2xl font-semibold"
-              style={answerStatus === "correct"
-                ? { background: "var(--primary)", color: "#0d1f14" }
-                : { background: "#ef4444", color: "#fff" }
-              }
-            >
-              {answerStatus === "correct" ? "✅ Tiếp tục" : "❌ Tiếp tục"}
-            </button>
+            <div className="mt-4 p-3 rounded-xl" style={{ background: answerStatus === "correct" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)", borderLeft: `3px solid ${answerStatus === "correct" ? "var(--primary)" : "#ef4444"}` }}>
+              <div className="text-xs font-semibold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                {answerStatus === "correct" ? "✅ Chính xác!" : "❌ Chưa đúng"}
+              </div>
+              {answerStatus === "wrong" && (
+                <div className="text-sm mt-1" style={{ color: "var(--text)" }}>
+                  Đáp án: <span className="font-bold font-jp" style={{ color: "var(--primary)" }}>{currentWord.meaning}</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -688,6 +688,7 @@ export default function StudySession({
             <HandwritingCanvas
               onSelectWord={(char) => setRecognizedCandidates((prev) => Array.from(new Set([...prev, char])))}
               onClose={() => {}}
+              strokeGuideChar={kanjisInWord[recognizedCandidates.length]}
             />
           </div>
 
@@ -785,6 +786,65 @@ export default function StudySession({
             {alreadyLearnedCount + learnedCount >= total && (
               <p className="text-xs mt-2 font-semibold" style={{ color: "var(--primary)" }}>✅ Hoàn thành 100% bài học!</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ===== BOTTOM BAR (Trắc nghiệm) ===== */}
+      {answerStatus !== "idle" && (currentStep === "meaning-to-word" || currentStep === "listening") && (
+        <div
+          className="fixed bottom-0 left-0 right-0 py-5 px-4 z-40 border-t transition-all duration-300"
+          style={{
+            background: answerStatus === "correct" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+            borderColor: answerStatus === "correct" ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div className="max-w-md mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Kết quả + thông tin từ */}
+            <div className="flex-1 flex items-start gap-3">
+              <div className="text-3xl">{answerStatus === "correct" ? "🟢" : "🔴"}</div>
+              <div>
+                <h4 className="font-bold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                  {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
+                </h4>
+                {answerStatus === "wrong" && (
+                  <p className="text-sm mt-0.5" style={{ color: "var(--text)" }}>
+                    Đáp án đúng:{" "}
+                    <span className="font-bold font-jp text-base" style={{ color: "var(--primary)" }}>
+                      {currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning}
+                    </span>
+                  </p>
+                )}
+                <div className="text-xs mt-1 space-y-0.5" style={{ color: "var(--text-muted)" }}>
+                  <div className="font-semibold font-jp" style={{ color: "var(--text)" }}>
+                    {currentWord.word} ({currentWord.reading})
+                  </div>
+                  <div>Ý nghĩa: {currentWord.meaning}</div>
+                  {currentWord.example && (
+                    <div className="mt-1 pt-1 border-t" style={{ borderColor: "var(--border-color)" }}>
+                      <div className="font-jp leading-relaxed">{currentWord.example}</div>
+                      {currentWord.exampleMeaning && (
+                        <div className="italic">{currentWord.exampleMeaning}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* Nút Tiếp tục */}
+            <div className="flex-shrink-0">
+              <button
+                onClick={nextStep}
+                className="btn w-full sm:w-auto px-10 py-3.5 rounded-2xl font-bold"
+                style={{
+                  background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
+                  color: answerStatus === "correct" ? "#0d1f14" : "#fff",
+                }}
+              >
+                Tiếp tục
+              </button>
+            </div>
           </div>
         </div>
       )}
