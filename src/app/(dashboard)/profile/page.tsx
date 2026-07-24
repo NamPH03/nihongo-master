@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { getProgress, ProgressData } from "@/lib/progress";
-import { User, Settings, Shield, Award, Edit3, Save, Camera, ChevronDown, ChevronUp, Lock, LogOut } from "lucide-react";
+import { User, Settings, Shield, Award, Edit3, Save, Camera, ChevronDown, ChevronUp, Lock, LogOut, Bell } from "lucide-react";
 import type { User as FirebaseUser } from "firebase/auth";
 
 export default function ProfilePage() {
@@ -361,8 +361,7 @@ export default function ProfilePage() {
               style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
               Bạn đăng nhập bằng Google — không cần đổi mật khẩu tại đây.
             </div>
-          )}
-
+          )}          {/* Thành tích & XP */}
           <div className="w-full flex items-center justify-between p-3.5 rounded-xl bg-neutral-500/5">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-yellow-500/10 text-yellow-500 flex items-center justify-center">
@@ -375,6 +374,54 @@ export default function ProfilePage() {
             <span className="text-xs font-bold text-[var(--primary)]">
               Streak: {progress?.streak || 0} ngày
             </span>
+          </div>
+
+          {/* Bật thông báo thủ công bằng click gesture (cần thiết cho iOS/Safari) */}
+          <div className="w-full flex flex-col gap-2 p-3.5 rounded-xl bg-neutral-500/5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <Bell size={18} />
+                </div>
+                <span className="text-sm font-bold" style={{ color: "var(--text)" }}>
+                  Thông báo nhắc học
+                </span>
+              </div>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{
+                  background: typeof window !== "undefined" && Notification.permission === "granted" ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                  color: typeof window !== "undefined" && Notification.permission === "granted" ? "#22c55e" : "#ef4444"
+                }}
+              >
+                {typeof window !== "undefined" && Notification.permission === "granted" ? "Đã bật" : "Chưa bật"}
+              </span>
+            </div>
+            
+            <p className="text-xs text-[var(--text-muted)] mt-1">
+              Bắt buộc phải bật để nhận nhắc nhở ôn từ vựng hàng ngày (iOS cần tải App PWA trước).
+            </p>
+
+            <button
+              onClick={async () => {
+                if (!currentUser) return;
+                try {
+                  const { registerPushNotifications } = await import("@/lib/fcm");
+                  const success = await registerPushNotifications(currentUser.uid);
+                  if (success) {
+                    alert("🎉 Đã bật thông báo thành công và đăng ký thiết bị!");
+                    window.location.reload();
+                  } else {
+                    alert("⚠️ Không thể đăng ký. Hãy chắc chắn bạn đã đồng ý cấp quyền thông báo trên trình duyệt.");
+                  }
+                } catch (e) {
+                  console.error(e);
+                  alert("Đã xảy ra lỗi khi đăng ký thông báo.");
+                }
+              }}
+              className="btn btn-primary w-full py-2.5 rounded-xl text-xs font-bold mt-2"
+            >
+              🔔 Đăng ký thiết bị nhận thông báo ngay
+            </button>
           </div>
 
           {/* Đăng xuất tài khoản */}
