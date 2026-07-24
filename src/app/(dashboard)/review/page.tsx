@@ -13,6 +13,7 @@ import { speakJapanese } from "@/lib/speech";
 // ===== TYPES =====
 type Vocabulary = {
   id: string; word: string; reading: string; type: string; meaning: string; level: string;
+  example?: string; exampleMeaning?: string;
 };
 type ReviewWord = Vocabulary & { wordId: string; srLevel: number; nextReview: string; };
 type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening" | "write-kanji";
@@ -89,6 +90,8 @@ export default function ReviewPage() {
   const [showExitModal, setShowExitModal] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isChecked, setIsChecked] = useState(false);
+  // Track từ đã sai và đã tái chèn vào queue để không tái chèn lần 2
+  const [reinsertedWordIds, setReinsertedWordIds] = useState<Set<string>>(new Set());
 
   // ─── Kanji drawing state ───
   const [drawnChars, setDrawnChars] = useState<string[]>([]); // các ký tự đã vẽ xác nhận
@@ -125,6 +128,8 @@ export default function ReviewPage() {
               type: data.type || "", meaning: data.meaning || "",
               level: data.level || "N5", srLevel: progress.srLevel || 1,
               nextReview: progress.nextReview || "",
+              example: data.example || "",
+              exampleMeaning: data.exampleMeaning || "",
             });
           }
         }
@@ -302,9 +307,31 @@ export default function ReviewPage() {
 
   const finishWord = async (promote: boolean) => {
     const user = auth.currentUser; if (!user) return;
-    if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
-    else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+    const isRecheck = reinsertedWordIds.has(currentWord.wordId);
+
+    // Chỉ áp dụng SRS lần đầu tiên gặp từ (không áp dụng lại khi ôn lại)
+    if (!isRecheck) {
+      if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+      else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+    }
     await markStudiedToday(user.uid);
+
+    // Nếu sai lần đầu & còn từ phía sau → tái chèn vào vị trí ngẫu nhiên
+    if (!promote && !isRecheck) {
+      const remaining = dueWords.length - (currentIndex + 1);
+      if (remaining > 0) {
+        setReinsertedWordIds((prev) => new Set(Array.from(prev).concat(currentWord.wordId)));
+        const insertAt = currentIndex + 1 + Math.floor(Math.random() * remaining);
+        const newQueue = [...dueWords];
+        newQueue.splice(insertAt, 0, currentWord);
+        setDueWords(newQueue);
+        const nextIdx = currentIndex + 1;
+        setCurrentIndex(nextIdx);
+        initWord(newQueue[nextIdx], []);
+        return;
+      }
+    }
+
     setDoneCount((p) => p + 1);
     if (currentIndex + 1 >= dueWords.length) { setFinished(true); }
     else { const nextIdx = currentIndex + 1; setCurrentIndex(nextIdx); initWord(dueWords[nextIdx], []); }
@@ -611,6 +638,14 @@ export default function ReviewPage() {
                 </div>
                 <div className="relative rounded-2xl overflow-hidden mx-auto shadow-inner mb-4 animate-scale-in"
                   style={{ background: "#ffffff", border: "2px solid var(--border-color)", width: "100%", maxWidth: 280, aspectRatio: "1/1" }}>
+                  {/* Ảnh hướng dẫn nét vẽ mờ — chỉ hiện khi srLevel <= 4 */}
+                  {currentWord.srLevel <= 4 && kanjiChars[currentKanjiIdx] && (() => {
+                    const hex = kanjiChars[currentKanjiIdx].codePointAt(0)?.toString(16).padStart(5, "0");
+                    if (!hex) return null;
+                    const strokeSrc = `https://raw.githubusercontent.com/KanjiVG/kanjivg/master/kanji/${hex}.svg`;
+                    // eslint-disable-next-line @next/next/no-img-element
+                    return <img src={strokeSrc} alt="" aria-hidden className="absolute inset-0 w-full h-full select-none" style={{ opacity: 0.18, objectFit: "contain", pointerEvents: "none" }} />;
+                  })()}
                   <canvas
                     ref={kanjiCanvasRef}
                     onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
@@ -699,6 +734,14 @@ export default function ReviewPage() {
                       {currentWord.word} ({currentWord.reading})
                     </div>
                     <div>Ý nghĩa: {currentWord.meaning}</div>
+                    {currentWord.example && (
+                      <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
+                        <div className="font-jp text-sm leading-relaxed" style={{ color: "var(--text)" }}>{currentWord.example}</div>
+                        {currentWord.exampleMeaning && (
+                          <div className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>{currentWord.exampleMeaning}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
