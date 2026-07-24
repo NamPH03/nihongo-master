@@ -149,22 +149,36 @@ export async function GET(req: NextRequest) {
       let notification: { title: string; body: string } | null = null;
       let notifUrl = '/dashboard';
 
-      // --- Ưu tiên 1: Nhắc ôn tập (khi có từ đến hạn) ---
+      // --- Ưu tiên 1: Nhắc ôn tập (milestone-based) ---
       if (dueCount > 0) {
-        const lastNotifiedDate = notifState.lastNotifiedDueDate || '';
-        const lastNotifiedCount = notifState.lastNotifiedDueCount || 0;
+        let lastNotifiedCount: number = notifState.lastNotifiedDueCount || 0;
 
-        const isNewDay = lastNotifiedDate !== todayVN;
-        // Cùng ngày: chỉ gửi nếu số từ đến hạn TĂNG so với lần thông báo trước
-        // → tránh spam khi user đã được nhắc rồi nhưng chưa ôn
-        const isDueCountIncreased = !isNewDay && dueCount > lastNotifiedCount;
+        // Nếu user đã ôn bớt từ (dueCount giảm), reset để đếm lại từ đầu
+        if (dueCount < lastNotifiedCount) {
+          stateUpdates.lastNotifiedDueCount = 0;
+          lastNotifiedCount = 0;
+        }
 
-        if (isNewDay || isDueCountIncreased) {
+        // Milestone logic:
+        // - Khi dueCount < 10: thông báo mỗi khi số từ tăng (để test & số nhỏ)
+        // - Khi dueCount >= 10: chỉ thông báo khi vượt bội của 10 (10, 20, 30...)
+        const lastMilestone = Math.floor(lastNotifiedCount / 10);
+        const currentMilestone = Math.floor(dueCount / 10);
+
+        const shouldNotify =
+          (dueCount < 10 && dueCount > lastNotifiedCount) ||
+          (dueCount >= 10 && currentMilestone > lastMilestone);
+
+        if (shouldNotify) {
           notification = getReviewReminderMessage(dueCount);
           stateUpdates.lastNotifiedDueCount = dueCount;
-          stateUpdates.lastNotifiedDueDate = todayVN;
           notifUrl = '/review';
         }
+      }
+
+      // Reset counter khi không còn từ đến hạn
+      if (dueCount === 0 && (notifState.lastNotifiedDueCount || 0) > 0) {
+        stateUpdates.lastNotifiedDueCount = 0;
       }
 
       // --- Ưu tiên 2: Nhắc học (nếu chưa gửi nhắc ôn tập hôm nay) ---
