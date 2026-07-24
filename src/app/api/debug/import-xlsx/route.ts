@@ -49,20 +49,56 @@ export async function GET(req: NextRequest) {
     // Chạy qua từng dòng và import vào Firestore
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const word = String(row.word || row.Word || "").trim();
-      const reading = String(row.reading || row.Reading || "").trim();
-      const meaning = String(row.meaning || row.Meaning || "").trim();
-      const type = String(row.type || row.Type || "名詞").trim();
-      const level = String(row.level || row.Level || "N3").trim();
-      const example = String(row.example || row.Example || "").trim();
-      const exampleMeaning = String(row.exampleMeaning || row.ExampleMeaning || row.example_meaning || "").trim();
-      const courseId = String(row.courseId || row.CourseId || "tu-vung-it").trim();
-      const lessonId = String(row.lessonId || row.LessonId || "lesson-01").trim();
-      const lessonTitle = String(row.lessonTitle || row.LessonTitle || "Bài học IT").trim();
-      const courseName = String(row.courseName || row.CourseName || "Từ vựng chuyên ngành IT").trim();
+      
+      let word = "";
+      let reading = "";
+      let meaning = "";
+      let type = "名詞";
+      let level = "N3";
+      let example = "";
+      let exampleMeaning = "";
+      let courseId = "tu-vung-it";
+      let lessonId = "lesson-01";
+      let lessonTitle = "Bài học IT";
+      let courseName = "Từ vựng chuyên ngành IT";
+
+      // Kiểm tra xem dữ liệu có bị gom thành 1 chuỗi phân tách bằng dấu phẩy không
+      const keys = Object.keys(row);
+      const commaHeader = keys.find(k => k.includes(",") && k.includes("word") && k.includes("reading"));
+      
+      if (commaHeader) {
+        const rawValue = String(row[commaHeader] || "");
+        const parts = rawValue.split(",");
+        if (parts.length >= 10) {
+          word = parts[0].trim();
+          reading = parts[1].trim();
+          meaning = parts[2].trim();
+          type = parts[3].trim();
+          level = parts[4].trim();
+          example = parts[5].trim();
+          exampleMeaning = parts[6].trim();
+          courseId = parts[7].trim();
+          lessonId = parts[8].trim();
+          lessonTitle = parts[9].trim();
+          // Lấy courseName dựa trên courseId hoặc lessonTitle để thân thiện với giao diện
+          courseName = lessonTitle.split(":")[0]?.trim() || "Từ vựng chuyên ngành IT";
+        }
+      } else {
+        word = String(row.word || row.Word || "").trim();
+        reading = String(row.reading || row.Reading || "").trim();
+        meaning = String(row.meaning || row.Meaning || "").trim();
+        type = String(row.type || row.Type || "名詞").trim();
+        level = String(row.level || row.Level || "N3").trim();
+        example = String(row.example || row.Example || "").trim();
+        exampleMeaning = String(row.exampleMeaning || row.ExampleMeaning || row.example_meaning || "").trim();
+        courseId = String(row.courseId || row.CourseId || "tu-vung-it").trim();
+        lessonId = String(row.lessonId || row.LessonId || "lesson-01").trim();
+        lessonTitle = String(row.lessonTitle || row.LessonTitle || "Bài học IT").trim();
+        courseName = String(row.courseName || row.CourseName || "Từ vựng chuyên ngành IT").trim();
+      }
 
       if (!word || !reading) {
-        errors.push(`Dòng ${i + 2}: Thiếu cột word hoặc reading`);
+        errors.push(`Dòng ${i + 2}: Thiếu cột word hoặc reading hoặc parse lỗi`);
         continue;
       }
 
