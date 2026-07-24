@@ -18,11 +18,7 @@ export async function GET(req: NextRequest) {
   }
 
   const filePath = path.join(
-    "C:",
-    "Users",
-    "NamPH's PC",
-    "Projects",
-    "nihongo-master",
+    process.cwd(),
     "Vocabulary",
     "IT_vocab",
     "IT_vocab.xlsx"
