@@ -5,6 +5,7 @@ import type { App } from 'firebase-admin/app';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getAuth } from 'firebase-admin/auth';
 
 function getAdminApp(): App {
   const existing = getApps().find((a) => a.name === 'admin');
@@ -40,4 +41,8 @@ export function getAdminDb() {
 
 export function getAdminMessaging() {
   return getMessaging(getAdminApp());
+}
+
+export function getAdminAuth() {
+  return getAuth(getAdminApp());
 }

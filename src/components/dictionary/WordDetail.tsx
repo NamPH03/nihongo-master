@@ -48,9 +48,10 @@ export default function WordDetail({ word }: Props) {
       if (!user) return;
       // Tìm wordId qua API (không ghi trực tiếp vào Firestore client)
       try {
+        const idToken = await user.getIdToken();
         const res = await fetch("/api/vocabulary/save", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
           body: JSON.stringify({ word: word.word, reading: word.reading }),
         });
         if (!res.ok) return;
@@ -118,9 +119,10 @@ export default function WordDetail({ word }: Props) {
       const exampleMeaning = word.meanings[0]?.definitions[0]?.exampleMeaning || "";
 
       // Gọi API route (Admin SDK) để tìm hoặc tạo document vocabulary
+      const idToken = await user.getIdToken();
       const res = await fetch("/api/vocabulary/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${idToken}` },
         body: JSON.stringify({
           word: word.word,
           reading: word.reading,

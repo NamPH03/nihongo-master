@@ -1,11 +1,25 @@
 // src/app/api/vocabulary/save/route.ts
 // API Route: Tìm hoặc tạo document vocabulary, trả về wordId
 // Chạy phía server với Firebase Admin SDK → bypass Firestore rules "allow write: if false"
+// Auth: yêu cầu Firebase ID token hợp lệ — chặn ghi rác từ người dùng chưa đăng nhập
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb, getAdminAuth } from "@/lib/firebase-admin";
 
 export async function POST(req: NextRequest) {
+  // --- Auth check ---
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const idToken = authHeader.slice(7);
+  try {
+    await getAdminAuth().verifyIdToken(idToken);
+  } catch {
+    return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
+  }
+  // --- End auth check ---
+
   try {
     const body = await req.json();
     const { word, reading, meaning, type, level, example, exampleMeaning } = body;
