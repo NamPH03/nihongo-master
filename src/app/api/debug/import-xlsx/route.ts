@@ -8,13 +8,13 @@ import * as path from "path";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  // Chỉ cho phép chạy với secret key hoặc truy cập qua localhost
+  // Chỉ cho phép chạy với secret key hoặc trong môi trường development
   const secret = req.nextUrl.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
-  const isLocal = req.headers.get("host")?.includes("localhost") || req.headers.get("host")?.includes("127.0.0.1");
+  const isDev = process.env.NODE_ENV === "development";
   const clear = req.nextUrl.searchParams.get("clear") === "true";
 
-  if (secret !== cronSecret && !isLocal) {
+  if (secret !== cronSecret && !isDev) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -5,9 +5,9 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get("secret");
   const cronSecret = process.env.CRON_SECRET;
-  const isLocal = req.headers.get("host")?.includes("localhost") || req.headers.get("host")?.includes("127.0.0.1");
+  const isDev = process.env.NODE_ENV === "development";
 
-  if (secret !== cronSecret && !isLocal) {
+  if (secret !== cronSecret && !isDev) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

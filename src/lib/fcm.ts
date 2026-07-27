@@ -34,9 +34,17 @@ export async function getFCMToken(): Promise<string | null> {
 // Lưu FCM token lên server (Firestore qua API route)
 export async function saveFCMTokenToServer(userId: string, token: string): Promise<void> {
   try {
+    const { getAuth } = await import('firebase/auth');
+    const auth = getAuth(app);
+    const currentUser = auth.currentUser;
+    const idToken = currentUser ? await currentUser.getIdToken() : '';
+
     await fetch('/api/notifications/register', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
       body: JSON.stringify({
         userId,
         token,

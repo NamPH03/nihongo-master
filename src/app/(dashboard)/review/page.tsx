@@ -92,6 +92,7 @@ export default function ReviewPage() {
   const [showExitModal, setShowExitModal] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [isChecked, setIsChecked] = useState(false);
+  const [showFurigana, setShowFurigana] = useState(true);
   // Track từ đã sai và đã tái chèn vào queue để không tái chèn lần 2
   const [reinsertedWordIds, setReinsertedWordIds] = useState<Set<string>>(new Set());
 
@@ -252,7 +253,7 @@ export default function ReviewPage() {
 
   const currentWord = dueWords[currentIndex];
 
-  // Phát âm thanh khi vừa kiểm tra xong đáp án
+  // Chỉ tự động phát âm thanh ở bước listening hoặc khi VỪA BẤM KIỂM TRÁ (isChecked = true)
   useEffect(() => {
     if (isChecked && currentWord) {
       speakJapanese(currentWord.word, false);
@@ -280,29 +281,33 @@ export default function ReviewPage() {
 
   // ─── Handle result (tiếp tục / sai) ───
   const handleResult = async (remembered: boolean) => {
-
     if (!remembered) {
       setForgotThisWord(true);
-      if (remainingSteps.length > 0) {
-        const next = pickRandom(remainingSteps);
-        const newRemaining = remainingSteps.filter((s) => s !== next);
-        setCurrentStep(next);
-        setRemainingSteps(newRemaining);
-        setSelectedChoice(null);
-        setSelectedAnswer(null);
-        setAnswerStatus("idle");
-        setIsChecked(false);
-        setTypedAnswer("");
-        setDrawnChars([]);
-        setCurrentKanjiIdx(0);
-        clearCanvas();
-        if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
-        else if (next === "word-to-meaning") setChoices(generateChoices(currentWord, allWords, "meaning"));
-        else if (next === "listening") { setChoices(generateChoices(currentWord, allWords, "meaning")); setTimeout(() => speakJapanese(currentWord.word, false), 400); }
-      } else {
-        await finishWord(false);
-      }
+      // Nếu trả lời SAI → chọn một cách hỏi khác từ remainingSteps (nếu còn)
+      // nếu hết steps khác → tạo lại tất cả các steps để hỏi lại đến khi trả lời đúng thì thôi
+      const allPossibleSteps = getStepsForWord(currentWord);
+      let available = remainingSteps.length > 0 ? remainingSteps : allPossibleSteps.filter(s => s !== currentStep);
+      if (available.length === 0) available = allPossibleSteps;
+
+      const next = pickRandom(available);
+      const newRemaining = available.filter((s) => s !== next);
+
+      setCurrentStep(next);
+      setRemainingSteps(newRemaining);
+      setSelectedChoice(null);
+      setSelectedAnswer(null);
+      setAnswerStatus("idle");
+      setIsChecked(false);
+      setTypedAnswer("");
+      setDrawnChars([]);
+      setCurrentKanjiIdx(0);
+      clearCanvas();
+
+      if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
+      else if (next === "word-to-meaning") setChoices(generateChoices(currentWord, allWords, "meaning"));
+      else if (next === "listening") { setChoices(generateChoices(currentWord, allWords, "meaning")); setTimeout(() => speakJapanese(currentWord.word, false), 400); }
     } else {
+      // Khi đã trả lời ĐÚNG → chuyển sang từ tiếp theo
       await finishWord(!forgotThisWord);
     }
   };
@@ -541,11 +546,26 @@ export default function ReviewPage() {
         {currentStep === "word-to-meaning" && currentWord && (
           <div className="card p-6 animate-scale-in rounded-3xl">
             <div className="text-center mb-6">
-              <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-faint)" }}>Chọn nghĩa đúng của từ</p>
-              <div className="font-jp text-5xl font-bold" style={{ color: "var(--text)" }}>{currentWord.word}</div>
-              {answerStatus !== "idle" && currentWord.word !== currentWord.reading && (
-                <div className="text-base mt-2 font-jp animate-fade-in" style={{ color: "var(--primary)" }}>{currentWord.reading}</div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs uppercase tracking-widest text-left" style={{ color: "var(--text-faint)" }}>Chọn nghĩa đúng của từ</p>
+                {currentWord.word !== currentWord.reading && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFurigana((prev) => !prev)}
+                    className="text-xs font-semibold underline"
+                    style={{ color: "var(--primary)" }}
+                  >
+                    {showFurigana ? "Ẩn furigana" : "Hiện furigana"}
+                  </button>
+                )}
+              </div>
+              
+              {showFurigana && currentWord.word !== currentWord.reading && (
+                <div className="text-sm font-jp font-semibold mb-1 animate-fade-in" style={{ color: "var(--primary)" }}>
+                  {currentWord.reading}
+                </div>
               )}
+              <div className="font-jp text-5xl font-bold" style={{ color: "var(--text)" }}>{currentWord.word}</div>
             </div>
             <ChoiceList />
           </div>
