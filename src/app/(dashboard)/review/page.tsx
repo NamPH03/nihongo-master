@@ -279,12 +279,19 @@ export default function ReviewPage() {
     }
   };
 
-  // ─── Handle result (tiếp tục / sai) ───
+  // ─── Handle result (khi bấm nút "Tiếp tục" ở bottom bar) ───
   const handleResult = async (remembered: boolean) => {
+    const isRecheck = reinsertedWordIds.has(currentWord.wordId);
+
     if (!remembered) {
       setForgotThisWord(true);
-      // Nếu trả lời SAI → chọn một cách hỏi khác từ remainingSteps (nếu còn)
-      // nếu hết steps khác → tạo lại tất cả các steps để hỏi lại đến khi trả lời đúng thì thôi
+      // Lần đầu sai → finishWord(false) để trừ điểm SRS & chèn vào vị trí ngẫu nhiên phía sau, rồi chuyển sang từ khác ngay
+      if (!isRecheck) {
+        await finishWord(false);
+        return;
+      }
+
+      // Nếu gặp lại (recheck) mà vẫn sai → không bị trừ điểm SRS nữa, mà tiếp tục đổi dạng câu hỏi cho từ này ngay tại chỗ đến khi làm đúng mới thôi
       const allPossibleSteps = getStepsForWord(currentWord);
       let available = remainingSteps.length > 0 ? remainingSteps : allPossibleSteps.filter(s => s !== currentStep);
       if (available.length === 0) available = allPossibleSteps;
