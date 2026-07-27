@@ -6,6 +6,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 
 export async function POST(req: NextRequest) {
+  const secret = req.nextUrl.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+  const isLocal = req.headers.get("host")?.includes("localhost") || req.headers.get("host")?.includes("127.0.0.1");
+
+  if (secret !== cronSecret && !isLocal) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { uid } = await req.json();
   if (!uid) return NextResponse.json({ error: "Missing uid" }, { status: 400 });
 

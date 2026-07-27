@@ -6,8 +6,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const uid = searchParams.get("uid");
+  const secret = req.nextUrl.searchParams.get("secret");
+  const cronSecret = process.env.CRON_SECRET;
+  const isLocal = req.headers.get("host")?.includes("localhost") || req.headers.get("host")?.includes("127.0.0.1");
+
+  if (secret !== cronSecret && !isLocal) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const uid = req.nextUrl.searchParams.get("uid");
   if (!uid) return NextResponse.json({ error: "Missing uid" }, { status: 400 });
 
   const db = getAdminDb();
