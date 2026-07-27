@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/ui/Navbar";
+import { getAllVocabulary } from "@/lib/vocabCache";
 
 type CourseSummary = {
   courseId: string;
@@ -36,33 +36,24 @@ export default function LearnHomePage() {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const snap = await getDocs(query(collection(db, "vocabulary")));
+        // Dùng cache thay vì getDocs trực tiếp — tránh đọc lại Firestore mỗi lần vào trang
+        const allVocab = await getAllVocabulary();
         const map = new Map<string, { courseName: string; lessonIds: Set<string>; wordCount: number }>();
         let unassigned = 0;
 
-        snap.docs.forEach((doc) => {
-          const data = doc.data() as Record<string, unknown>;
+        allVocab.forEach((data) => {
           const courseId = String(data.courseId || "").trim();
           const lessonId = String(data.lessonId || "").trim();
           const courseName = String(data.courseName || courseId || "Khoá học chưa gán").trim();
 
           if (!courseId) {
-            // Bỏ qua từ lưu từ Từ điển (source: "dictionary") — chúng nằm trong Sổ tay, không phải khoá học
-            const source = String(data.source || "").trim();
-            if (source !== "dictionary") {
-              unassigned += 1;
-            }
+            if (data.source !== "dictionary") unassigned += 1;
             return;
           }
 
           if (!map.has(courseId)) {
-            map.set(courseId, {
-              courseName: courseName || courseId,
-              lessonIds: new Set(),
-              wordCount: 0,
-            });
+            map.set(courseId, { courseName: courseName || courseId, lessonIds: new Set(), wordCount: 0 });
           }
-
           const course = map.get(courseId)!;
           if (lessonId) course.lessonIds.add(lessonId);
           course.wordCount += 1;

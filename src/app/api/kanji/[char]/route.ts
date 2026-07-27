@@ -1,6 +1,6 @@
 // src/app/api/kanji/[char]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
+import fs from "fs/promises";
 import path from "path";
 
 function getKanjiVGCode(char: string): string {
@@ -21,14 +21,15 @@ export async function GET(
     const code = getKanjiVGCode(char);
     const filePath = path.join(process.cwd(), "public", "kanji", `${code}.svg`);
 
-    if (!fs.existsSync(filePath)) {
+    // Dùng async readFile thay vì sync — không block event loop
+    let svgText: string;
+    try {
+      svgText = await fs.readFile(filePath, "utf8");
+    } catch {
       return NextResponse.json({ error: "Kanji SVG not found" }, { status: 404 });
     }
 
-    let svgText = fs.readFileSync(filePath, "utf8");
-
     // Tối ưu hóa SVG để hỗ trợ đổi màu linh hoạt theo CSS (stroke="currentColor")
-    // Thay thế các stroke màu cứng (thường là #000 hoặc #999) bằng currentColor
     svgText = svgText
       .replace(/stroke:\s*#[0-9a-fA-F]{3,6}/g, "stroke: currentColor")
       .replace(/stroke="#[0-9a-fA-F]{3,6}"/g, 'stroke="currentColor"');

@@ -1,21 +1,21 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { promoteWord, demoteWord, markStudiedToday, getDueWords } from "@/lib/progress";
+import { promoteWord, demoteWord, markStudiedToday, getDueWordsWithVocab } from "@/lib/progress";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
+import type { CachedVocabItem } from "@/lib/vocabCache";
 
 // ===== TYPES =====
 type Vocabulary = {
   id: string; word: string; reading: string; type: string; meaning: string; level: string;
   example?: string; exampleMeaning?: string;
 };
-type ReviewWord = Vocabulary & { wordId: string; srLevel: number; nextReview: string; };
+type ReviewWord = CachedVocabItem & { wordId: string; srLevel: number; nextReview: string; };
 type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening" | "write-kanji";
 
 const BASE_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "listening"];
@@ -107,44 +107,42 @@ export default function ReviewPage() {
   const isDrawingRef = useRef(false);
 
   const router = useRouter();
+  // Track đã gọi markStudiedToday trong phiên này chưa
+  const studiedTodayRef = useRef(false);
 
-  // ─── Auth guard ───
+  // ─── Auth + Fetch data (gộp 1 useEffect) ───
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => { if (!user) router.push("/login"); });
-    return () => unsub();
-  }, [router]);
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) { router.push("/login"); return; }
 
-  // ─── Fetch data ───
-  useEffect(() => {
-    const fetchData = async () => {
       try {
-        const user = auth.currentUser; if (!user) return;
-        const dueProgress = await getDueWords(user.uid, 20);
+        // getDueWordsWithVocab đọc vocabulary 1 lần (cache) + progress song song
+        const { dueWords: dueProgress, allVocab } = await getDueWordsWithVocab(user.uid, 20);
+
+        // Build vocabulary map O(1) lookup
+        const vocabMap = new Map(allVocab.map((v) => [v.id, v]));
+
+        // Lấy chi tiết từng từ đến hạn — dùng map thay vì N getDoc calls
         const reviewWords: ReviewWord[] = [];
         for (const progress of dueProgress) {
-          const snap = await getDoc(doc(db, "vocabulary", progress.id));
-          if (snap.exists()) {
-            const data = snap.data();
+          const vocab = vocabMap.get(progress.id);
+          if (vocab) {
             reviewWords.push({
-              id: snap.id, wordId: progress.id,
-              word: data.word || "", reading: data.reading || "",
-              type: data.type || "", meaning: data.meaning || "",
-              level: data.level || "N5", srLevel: progress.srLevel || 1,
+              ...vocab,
+              wordId: progress.id,
+              srLevel: progress.srLevel || 1,
               nextReview: progress.nextReview || "",
-              example: data.example || "",
-              exampleMeaning: data.exampleMeaning || "",
             });
           }
         }
-        const allSnap = await getDocs(query(collection(db, "vocabulary")));
-        const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Vocabulary[];
-        setAllWords(all);
+
+        setAllWords(allVocab as Vocabulary[]);
         setDueWords(reviewWords);
       } catch (err) { console.error(err); }
       finally { setLoading(false); }
-    };
-    fetchData();
-  }, []);
+    });
+    return () => unsub();
+  }, [router]);
 
   // ─── Handwriting logic ───
   const getCoords = (e: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
@@ -328,7 +326,11 @@ export default function ReviewPage() {
       if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
       else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
     }
-    await markStudiedToday(user.uid);
+    // markStudiedToday chỉ gọi 1 lần/phiên — tránh 20 Firestore reads thừa
+    if (!studiedTodayRef.current) {
+      await markStudiedToday(user.uid);
+      studiedTodayRef.current = true;
+    }
 
     // Nếu sai lần đầu & còn từ phía sau → tái chèn vào vị trí ngẫu nhiên (cách ít nhất 2-3 từ nếu còn đủ)
     if (!promote && !isRecheck) {
@@ -378,28 +380,32 @@ export default function ReviewPage() {
     }
   };
 
-  // ─── Phím tắt ───
+  // ─── Phím tắt (stable handler dùng ref, đăng ký 1 lần) ───
+  const keyStateRef = useRef({ loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus });
+  keyStateRef.current = { loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (loading || finished || dueWords.length === 0) return;
+      const s = keyStateRef.current;
+      if (s.loading || s.finished || s.dueWords.length === 0) return;
       if (e.key === "Enter") {
-        if (!isChecked) {
-          if (currentStep === "type-reading") { if (typedAnswer.trim()) handleCheckAnswer(); }
-          else if (currentStep !== "write-kanji") { if (selectedChoice) handleCheckAnswer(); }
+        if (!s.isChecked) {
+          if (s.currentStep === "type-reading") { if (s.typedAnswer.trim()) handleCheckAnswer(); }
+          else if (s.currentStep !== "write-kanji") { if (s.selectedChoice) handleCheckAnswer(); }
         } else {
-          handleResult(answerStatus === "correct");
+          handleResult(s.answerStatus === "correct");
         }
         return;
       }
-      if (currentStep !== "type-reading" && currentStep !== "write-kanji" && !isChecked && ["1","2","3","4"].includes(e.key)) {
+      if (s.currentStep !== "type-reading" && s.currentStep !== "write-kanji" && !s.isChecked && ["1","2","3","4"].includes(e.key)) {
         const idx = parseInt(e.key) - 1;
-        if (choices[idx]) handleSelectChoice(choices[idx]);
+        if (s.choices[idx]) handleSelectChoice(s.choices[idx]);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus]);
+  }, []); // đăng ký 1 lần duy nhất, đọc state từ ref
 
   // ─── Auto focus input ───
   useEffect(() => {

@@ -4,6 +4,7 @@ import {
   doc, getDoc, setDoc, updateDoc,
   collection, getDocs
 } from "firebase/firestore";
+import { getAllVocabulary, type CachedVocabItem } from "@/lib/vocabCache";
 
 // ===== SPACED REPETITION INTERVALS =====
 export const SR_INTERVALS: Record<number, number> = {
@@ -189,16 +190,16 @@ export async function getDueWords(
 ): Promise<DueWordProgress[]> {
   const now = new Date().toISOString();
 
-  // Load vocabulary IDs để filter orphan
-  const vocabSnap = await getDocs(collection(db, "vocabulary"));
-  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
+  // Dùng cache để tránh đọc lại vocabulary khi không cần
+  const [allVocab, progressSnap] = await Promise.all([
+    getAllVocabulary(),
+    getDocs(userProgressCollection(userId)),
+  ]);
+  const vocabIds = new Set(allVocab.map((v) => v.id));
 
-  const snap = await getDocs(userProgressCollection(userId));
-
-  return snap.docs
+  return progressSnap.docs
     .filter((d) => {
       if (d.id === "stats") return false;
-      // Bỏ qua orphan docs
       if (!vocabIds.has(d.id)) return false;
       const data = d.data();
       if (data.status !== "learned") return false;
@@ -207,6 +208,43 @@ export async function getDueWords(
     })
     .map((d) => ({ id: d.id, ...d.data() } as DueWordProgress))
     .slice(0, limitCount);
+}
+
+/**
+ * Phiên bản tổng hợp: đọc vocabulary 1 lần duy nhất → trả về cả dueWords + allWords.
+ * Dùng cho Review page để tránh N+1 và đọc collection nhiều lần.
+ */
+export type DueWordsResult = {
+  dueWords: DueWordProgress[];
+  allVocab: CachedVocabItem[];
+};
+
+export async function getDueWordsWithVocab(
+  userId: string,
+  limitCount = 20
+): Promise<DueWordsResult> {
+  const now = new Date().toISOString();
+
+  // Đọc song song: vocabulary (cache) + progress user
+  const [allVocab, progressSnap] = await Promise.all([
+    getAllVocabulary(),
+    getDocs(userProgressCollection(userId)),
+  ]);
+  const vocabIds = new Set(allVocab.map((v) => v.id));
+
+  const dueWords = progressSnap.docs
+    .filter((d) => {
+      if (d.id === "stats") return false;
+      if (!vocabIds.has(d.id)) return false;
+      const data = d.data();
+      if (data.status !== "learned") return false;
+      const nextReview = data.nextReview;
+      return !nextReview || nextReview <= now;
+    })
+    .map((d) => ({ id: d.id, ...d.data() } as DueWordProgress))
+    .slice(0, limitCount);
+
+  return { dueWords, allVocab };
 }
 
 // ===== PROGRESS & STREAK =====
@@ -318,7 +356,12 @@ export type UserWordStatus = {
 export async function getUserWordStatuses(
   userId: string
 ): Promise<UserWordStatus[]> {
-  const progressSnap = await getDocs(userProgressCollection(userId));
+  // Đọc song song: progress + vocabulary (từ cache)
+  const [progressSnap, allVocab] = await Promise.all([
+    getDocs(userProgressCollection(userId)),
+    getAllVocabulary(),
+  ]);
+
   const progressData = progressSnap.docs
     .filter((d) => d.id !== "stats")
     .map((d) => {
@@ -334,12 +377,9 @@ export async function getUserWordStatuses(
 
   if (progressData.length === 0) return [];
 
-  // Lấy toàn bộ từ vựng để map thông tin (word, reading, meaning)
-  const vocabSnap = await getDocs(collection(db, "vocabulary"));
-  const vocabMap = new Map<string, { word?: string; reading?: string; meaning?: string }>();
-  vocabSnap.forEach((doc) => {
-    vocabMap.set(doc.id, doc.data());
-  });
+  // Dùng vocab từ cache thay vì đọc lại Firestore
+  const vocabMap = new Map<string, CachedVocabItem>();
+  allVocab.forEach((v) => vocabMap.set(v.id, v));
 
   const result: UserWordStatus[] = [];
   for (const prog of progressData) {

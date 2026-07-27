@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import PushNotificationSetup from "@/components/PushNotificationSetup";
 
 export const metadata: Metadata = {
   title: "Nihongo Master — Học tiếng Nhật mỗi ngày",
@@ -28,7 +27,6 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="min-h-screen bg-page text-tx antialiased">
-        <PushNotificationSetup />
         {children}
       </body>
     </html>
