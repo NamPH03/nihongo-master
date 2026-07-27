@@ -7,6 +7,8 @@ import { speakJapanese } from "@/lib/speech";
 import SpeakButton from "@/components/ui/SpeakButton";
 import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
 import Link from "next/link";
+import { sfx } from "@/lib/sfx";
+import SessionCompletionModal from "@/components/ui/SessionCompletionModal";
 
 type Vocabulary = {
   id: string;
@@ -279,7 +281,10 @@ export default function StudySession({
     setSelectedAnswer(choice);
     const correct =
       currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
-    setAnswerStatus(choice === correct ? "correct" : "wrong");
+    const isRight = choice === correct;
+    setAnswerStatus(isRight ? "correct" : "wrong");
+    if (isRight) sfx.playCorrect();
+    else sfx.playWrong();
   };
 
   const checkDrawingKanji = () => {
@@ -323,26 +328,12 @@ export default function StudySession({
   // Tất cả từ trong bài đã học hết
   if (!loading && sessionWords.length === 0 && words.length > 0) {
     return (
-      <div className="card p-12 text-center animate-scale-in rounded-3xl">
-        <div className="text-6xl mb-4">🏆</div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
-          Bài học đã hoàn thành!
-        </h2>
-        <p className="mb-2" style={{ color: "var(--text-muted)" }}>
-          Bạn đã học hết{" "}
-          <span className="font-bold" style={{ color: "var(--primary)" }}>
-            {alreadyLearnedCount} / {total} từ
-          </span>
-          {" "}trong bài này.
-        </p>
-        <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
-          Các từ đã học sẽ xuất hiện trong phần ôn tập SRS.
-        </p>
-        <div className="flex flex-col gap-3">
-          <Link href="/review" className="btn btn-primary py-3 rounded-2xl">📖 Ôn tập ngay</Link>
-          <Link href={`/learn/${encodeURIComponent(courseId)}`} className="btn btn-ghost py-3 rounded-2xl">← Quay về bài học</Link>
-        </div>
-      </div>
+      <SessionCompletionModal
+        title="Bài học đã hoàn thành!"
+        totalWords={alreadyLearnedCount || total}
+        nextLessonUrl={`/learn/${encodeURIComponent(courseId)}`}
+        onRestart={() => window.location.reload()}
+      />
     );
   }
 

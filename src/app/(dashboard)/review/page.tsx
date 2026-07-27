@@ -9,6 +9,8 @@ import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
 import type { CachedVocabItem } from "@/lib/vocabCache";
+import { sfx } from "@/lib/sfx";
+import SessionCompletionModal from "@/components/ui/SessionCompletionModal";
 
 // ===== TYPES =====
 type Vocabulary = {
@@ -367,16 +369,22 @@ export default function ReviewPage() {
     if (isChecked) return;
     if (currentStep === "type-reading") {
       const correct = currentWord.reading.trim();
-      setAnswerStatus(typedAnswer.trim() === correct ? "correct" : "wrong");
+      const isRight = typedAnswer.trim() === correct;
+      setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
+      if (isRight) sfx.playCorrect();
+      else sfx.playWrong();
     } else {
       if (!selectedChoice) return;
       let correct = "";
       if (currentStep === "meaning-to-word") correct = currentWord.word;
       else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
+      const isRight = selectedChoice === correct;
       setSelectedAnswer(selectedChoice);
-      setAnswerStatus(selectedChoice === correct ? "correct" : "wrong");
+      setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
+      if (isRight) sfx.playCorrect();
+      else sfx.playWrong();
     }
   };
 
@@ -487,34 +495,13 @@ export default function ReviewPage() {
     </div>
   );
 
-  if (!loading && dueWords.length === 0) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center px-4">
-      <div className="card p-12 text-center max-w-md animate-scale-in">
-        <div className="text-6xl mb-4">✅</div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>Không có gì cần ôn!</h2>
-        <p className="mb-6" style={{ color: "var(--text-muted)" }}>Bạn đã ôn hết rồi — quay lại sau nhé.</p>
-        <div className="flex flex-col gap-3">
-          <Link href="/learn" className="btn btn-primary py-3 rounded-xl">🎯 Học từ mới</Link>
-          <Link href="/dashboard" className="btn btn-ghost py-3 rounded-xl">Về Dashboard</Link>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (finished) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center px-4">
-      <div className="card p-12 text-center max-w-md animate-scale-in">
-        <div className="text-6xl mb-4">🎉</div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>Ôn tập xong!</h2>
-        <p className="mb-8" style={{ color: "var(--text-muted)" }}>
-          Đã ôn <span className="font-bold" style={{ color: "var(--primary)" }}>{doneCount} từ</span>
-        </p>
-        <div className="flex flex-col gap-3">
-          <Link href="/learn" className="btn btn-primary py-3 rounded-xl">🎯 Học từ mới</Link>
-          <Link href="/progress" className="btn btn-ghost py-3 rounded-xl">📈 Xem tiến độ</Link>
-          <Link href="/dashboard" className="py-3 text-sm text-center" style={{ color: "var(--text-muted)" }}>Về Dashboard</Link>
-        </div>
-      </div>
+  if (finished || (!loading && dueWords.length === 0)) return (
+    <div className="min-h-[100dvh] bg-page">
+      <SessionCompletionModal
+        title={dueWords.length === 0 ? "Không có từ cần ôn!" : "Đã hoàn thành buổi ôn tập!"}
+        totalWords={doneCount || dueWords.length}
+        onRestart={() => window.location.reload()}
+      />
     </div>
   );
 

@@ -1,42 +1,55 @@
 // src/lib/speech.ts
-// Dùng Web Speech API để đọc tiếng Nhật
-// Hoàn toàn miễn phí, có sẵn trong trình duyệt
+// TTS Engine: Ưu tiên Google Translate Audio CDN (Native Accent) -> Fallback Web Speech API
 
-// Kiểm tra trình duyệt có hỗ trợ không
 export function isSpeechSupported(): boolean {
-  return typeof window !== "undefined" && "speechSynthesis" in window;
+  return typeof window !== "undefined";
 }
 
-// Hàm đọc từ tiếng Nhật
 export function speakJapanese(text: string, slow = false): void {
-  if (!isSpeechSupported()) return;
+  if (!text?.trim() || typeof window === "undefined") return;
 
-  // Dừng nếu đang đọc dở
-  window.speechSynthesis.cancel();
+  const cleanText = text.trim();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-
-  // Cài đặt giọng đọc
-  utterance.lang = "ja-JP";          // Ngôn ngữ Nhật
-  utterance.rate = slow ? 0.5 : 1.0; // 0.5 = chậm, 1.0 = bình thường
-  utterance.pitch = 1.0;             // Cao độ giọng
-  utterance.volume = 1.0;            // Âm lượng tối đa
-
-  // Ưu tiên dùng giọng Nhật nếu có
-  const voices = window.speechSynthesis.getVoices();
-  const japaneseVoice = voices.find(
-    (v) => v.lang === "ja-JP" || v.lang.startsWith("ja")
-  );
-  if (japaneseVoice) {
-    utterance.voice = japaneseVoice;
+  // 1. Thử dùng Google Translate Audio CDN (giọng đọc bản xứ cực chuẩn & tự nhiên)
+  try {
+    const speedParam = slow ? "0.4" : "1.0";
+    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ja&q=${encodeURIComponent(cleanText)}&ttsspeed=${speedParam}`;
+    const audio = new Audio(audioUrl);
+    
+    // Nếu phát âm thành công
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        // Nếu trình duyệt chặn autoplay hoặc CORS -> Fallback Web Speech API
+        speakWebSpeech(cleanText, slow);
+      });
+    }
+    return;
+  } catch {
+    // Fallback
+    speakWebSpeech(cleanText, slow);
   }
+}
+
+function speakWebSpeech(text: string, slow: boolean): void {
+  if (!("speechSynthesis" in window)) return;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "ja-JP";
+  utterance.rate = slow ? 0.6 : 1.0;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+
+  const voices = window.speechSynthesis.getVoices();
+  const japaneseVoice = voices.find((v) => v.lang === "ja-JP" || v.lang.startsWith("ja"));
+  if (japaneseVoice) utterance.voice = japaneseVoice;
 
   window.speechSynthesis.speak(utterance);
 }
 
-// Dừng đọc
 export function stopSpeech(): void {
-  if (isSpeechSupported()) {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
 }
