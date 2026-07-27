@@ -96,21 +96,36 @@ export async function GET(req: NextRequest) {
   const adminDb = getAdminDb();
   const adminMessaging = getAdminMessaging();
 
-  // Lấy tất cả FCM tokens từ tất cả users (collectionGroup query)
-  const tokensSnap = await adminDb.collectionGroup('fcmTokens').get();
-
-  // Nhóm tokens theo userId — bỏ qua token từ localhost/dev để tránh gửi 2 lần
+  // Lấy tất cả FCM tokens (bọc try-catch phòng trường hợp thiếu collectionGroup Index trên Firestore)
   const userTokens: Record<string, string[]> = {};
-  tokensSnap.forEach((doc) => {
-    const userId = doc.ref.parent.parent?.id;
-    if (!userId) return;
-    const { token, origin } = doc.data();
-    if (!token) return;
-    // Bỏ qua token đăng ký từ localhost (tránh duplicate khi dev và prod cùng login)
-    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return;
-    if (!userTokens[userId]) userTokens[userId] = [];
-    userTokens[userId].push(token);
-  });
+  let tokensSnap: FirebaseFirestore.QuerySnapshot | null = null;
+
+  try {
+    tokensSnap = await adminDb.collectionGroup('fcmTokens').get();
+    tokensSnap.forEach((doc) => {
+      const userId = doc.ref.parent.parent?.id;
+      if (!userId) return;
+      const { token, origin } = doc.data();
+      if (!token) return;
+      if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return;
+      if (!userTokens[userId]) userTokens[userId] = [];
+      userTokens[userId].push(token);
+    });
+  } catch (e) {
+    console.error('[cron/notify] Fallback collectionGroup query failed:', e);
+    // Fallback: Duyệt danh sách users trực tiếp nếu collectionGroup query bị lỗi index
+    const usersSnap = await adminDb.collection('users').get();
+    for (const uDoc of usersSnap.docs) {
+      const uTokensSnap = await uDoc.ref.collection('fcmTokens').get();
+      uTokensSnap.forEach((tDoc) => {
+        const { token, origin } = tDoc.data();
+        if (!token) return;
+        if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return;
+        if (!userTokens[uDoc.id]) userTokens[uDoc.id] = [];
+        userTokens[uDoc.id].push(token);
+      });
+    }
+  }
 
   const userIds = Object.keys(userTokens);
   let totalSent = 0;
@@ -216,12 +231,14 @@ export async function GET(req: NextRequest) {
             (resp.error?.code === 'messaging/registration-token-not-registered' ||
               resp.error?.code === 'messaging/invalid-registration-token')
           ) {
-            // Tìm doc key để xoá
-            tokensSnap.forEach((doc) => {
-              if (doc.ref.parent.parent?.id === userId && doc.data().token === tokens[idx]) {
-                invalidTokenKeys.push(doc.ref.delete());
-              }
-            });
+            // Tìm doc key để xoá nếu tokensSnap khả dụng
+            if (tokensSnap) {
+              tokensSnap.forEach((doc) => {
+                if (doc.ref.parent.parent?.id === userId && doc.data().token === tokens[idx]) {
+                  invalidTokenKeys.push(doc.ref.delete());
+                }
+              });
+            }
           }
         });
         await Promise.all(invalidTokenKeys);
