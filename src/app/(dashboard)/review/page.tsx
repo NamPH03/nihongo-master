@@ -5,7 +5,6 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { promoteWord, demoteWord, markStudiedToday, getDueWordsWithVocab } from "@/lib/progress";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import SpeakButton from "@/components/ui/SpeakButton";
 import { speakJapanese } from "@/lib/speech";
 import type { CachedVocabItem } from "@/lib/vocabCache";

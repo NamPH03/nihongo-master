@@ -9,9 +9,11 @@ const nextConfig = {
   },
 
   // server-side packages — không bundle vào client
-  serverExternalPackages: ["firebase-admin", "pdf-parse"],
+  experimental: {
+    serverExternalPackages: ["firebase-admin", "pdf-parse"],
+  },
 
-  // Cache headers cho static assets
+  // Cache headers cho static assets  
   async headers() {
     return [
       {
