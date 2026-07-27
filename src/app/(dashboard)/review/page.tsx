@@ -57,14 +57,16 @@ function pickRandom<T>(arr: T[]): T {
 
 function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
   const correctValue = type === "word" ? correct.word : correct.meaning;
+  // Tìm trong allWords xem có đúng item này không, nếu không tạo pool từ tất cả từ khác ngoại trừ correct
   const pool = allWords.filter((w) => {
-    if (w.id === correct.id) return false;
+    if (w.word === correct.word && w.meaning === correct.meaning) return false;
     if (type === "meaning" && hasJapanese(w.meaning)) return false;
     const val = type === "word" ? w.word : w.meaning;
     return val && val !== correctValue;
   });
   const others = pool.sort(() => Math.random() - 0.5).slice(0, 3);
   const otherValues = others.map((w) => type === "word" ? w.word : w.meaning);
+  // Đảm bảo correctValue luôn luôn được đưa vào danh sách đáp án
   return [correctValue, ...otherValues].sort(() => Math.random() - 0.5);
 }
 
@@ -316,12 +318,15 @@ export default function ReviewPage() {
     }
     await markStudiedToday(user.uid);
 
-    // Nếu sai lần đầu & còn từ phía sau → tái chèn vào vị trí ngẫu nhiên
+    // Nếu sai lần đầu & còn từ phía sau → tái chèn vào vị trí ngẫu nhiên (cách ít nhất 2-3 từ nếu còn đủ)
     if (!promote && !isRecheck) {
       const remaining = dueWords.length - (currentIndex + 1);
       if (remaining > 0) {
         setReinsertedWordIds((prev) => new Set(Array.from(prev).concat(currentWord.wordId)));
-        const insertAt = currentIndex + 1 + Math.floor(Math.random() * remaining);
+        // Ưu tiên chèn cách ít nhất 2 vị trí nếu số từ còn lại >= 3, ngược lại chèn ở cuối
+        const minOffset = remaining >= 3 ? 2 : (remaining >= 2 ? 1 : 0);
+        const randomOffset = minOffset + Math.floor(Math.random() * (remaining - minOffset));
+        const insertAt = currentIndex + 1 + randomOffset;
         const newQueue = [...dueWords];
         newQueue.splice(insertAt, 0, currentWord);
         setDueWords(newQueue);
@@ -419,20 +424,35 @@ export default function ReviewPage() {
 
   const ChoiceList = () => (
     <div className="flex flex-col gap-3">
-      {choices.map((choice, i) => (
-        <button
-          key={i}
-          onClick={() => handleSelectChoice(choice)}
-          className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
-          style={{ background: "var(--surface-2)", border: "2px solid var(--border-color)", color: "var(--text)", ...getChoiceStyle(choice) }}
-        >
-          <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium"
-            style={{ background: choice === selectedChoice && !isChecked ? "var(--primary)" : "var(--surface-3)", color: choice === selectedChoice && !isChecked ? "#0d1f14" : "var(--text-muted)" }}>
-            {i + 1}
-          </span>
-          <span className={currentStep === "meaning-to-word" ? "font-jp text-lg font-semibold" : "font-semibold"}>{choice}</span>
-        </button>
-      ))}
+      {choices.map((choice, i) => {
+        // Tìm thông tin reading của từ tương ứng nếu đây là chọn từ tiếng Nhật
+        const matchedWord = currentStep === "meaning-to-word" ? allWords.find((w) => w.word === choice) : null;
+        const hasFurigana = matchedWord && matchedWord.reading && matchedWord.word !== matchedWord.reading;
+
+        return (
+          <button
+            key={i}
+            onClick={() => handleSelectChoice(choice)}
+            className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
+            style={{ background: "var(--surface-2)", border: "2px solid var(--border-color)", color: "var(--text)", ...getChoiceStyle(choice) }}
+          >
+            <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-medium"
+              style={{ background: choice === selectedChoice && !isChecked ? "var(--primary)" : "var(--surface-3)", color: choice === selectedChoice && !isChecked ? "#0d1f14" : "var(--text-muted)" }}>
+              {i + 1}
+            </span>
+            <div className="flex flex-col items-start gap-0.5">
+              {hasFurigana && (
+                <span className="text-xs font-jp" style={{ color: "var(--primary)" }}>
+                  {matchedWord.reading}
+                </span>
+              )}
+              <span className={currentStep === "meaning-to-word" ? "font-jp text-lg font-semibold" : "font-semibold"}>
+                {choice}
+              </span>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 
