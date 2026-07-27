@@ -1,11 +1,32 @@
+// src/app/api/dictionary/lookup/route.ts
+// Proxy Jisho API — tự động dịch từ tiếng Việt/Anh → tiếng Nhật nếu cần
+// Trả về kết quả gốc từ Jisho (EN) + translated_definitions (VI nếu input là VI)
+
 import { NextRequest, NextResponse } from "next/server";
 
-type TranslateItem = {
-  [key: string]: unknown;
-  0?: string | null;
-};
+function containsJapanese(text: string): boolean {
+  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(text);
+}
 
-type TranslateResponse = Array<Array<TranslateItem>>;
+function containsVietnamese(text: string): boolean {
+  return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/.test(text);
+}
+
+async function translateText(text: string, sl: string, tl: string): Promise<string> {
+  if (!text?.trim()) return "";
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text.trim())}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return text;
+    const data = await res.json();
+    const translated = Array.isArray(data?.[0])
+      ? data[0].map((item: unknown[]) => (typeof item?.[0] === "string" ? item[0] : "")).filter(Boolean).join("")
+      : "";
+    return translated || text;
+  } catch {
+    return text;
+  }
+}
 
 type DictionarySense = {
   english_definitions?: string[];
@@ -24,64 +45,23 @@ type DictionaryResponse = {
   [key: string]: unknown;
 };
 
-function containsVietnamese(text: string): boolean {
-  return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ]/.test(text);
-}
-
-async function translateText(text: string, sourceLang: string, targetLang: string): Promise<string> {
-  if (!text?.trim()) return "";
-
-  const encoded = encodeURIComponent(text.trim());
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encoded}`;
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!res.ok) return text;
-
-    const data = (await res.json()) as TranslateResponse;
-    const translated = Array.isArray(data?.[0])
-      ? data[0]
-          .map((item) => (typeof item?.[0] === "string" ? item[0] : ""))
-          .filter(Boolean)
-          .join(" ; ")
-      : "";
-
-    return translated || text;
-  } catch {
-    return text;
-  }
-}
-
-async function translateToVietnamese(text: string): Promise<string> {
-  return translateText(text, "en", "vi");
-}
-
 export async function GET(req: NextRequest) {
   const keyword = req.nextUrl.searchParams.get("word");
-  const language = req.nextUrl.searchParams.get("lang") === "en" ? "en" : "vi";
 
   if (!keyword || keyword.trim().length < 1) {
     return NextResponse.json({ error: "Missing word" }, { status: 400 });
   }
 
   try {
-    const normalizedKeyword = keyword.trim();
-    const lookupKeyword = language === "vi" && containsVietnamese(normalizedKeyword)
-      ? await translateText(normalizedKeyword, "vi", "en")
-      : normalizedKeyword;
+    const q = keyword.trim();
+    const isVietnamese = containsVietnamese(q) && !containsJapanese(q);
+
+    // Nếu tiếng Việt → dịch sang tiếng Anh để Jisho hiểu
+    const lookupKeyword = isVietnamese ? await translateText(q, "vi", "en") : q;
 
     const res = await fetch(
       `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(lookupKeyword)}`,
-      {
-        headers: {
-          Accept: "application/json",
-        },
-      }
+      { headers: { Accept: "application/json" } }
     );
 
     if (!res.ok) {
@@ -91,39 +71,28 @@ export async function GET(req: NextRequest) {
     const data = (await res.json()) as DictionaryResponse;
     const entries = Array.isArray(data?.data) ? data.data : [];
 
+    // Nếu input là tiếng Việt, dịch các định nghĩa EN → VI
+    const shouldTranslate = isVietnamese;
+
     const transformed = await Promise.all(
-      entries.map(async (entry) => {
-        const originalSenses = Array.isArray(entry?.senses) ? entry.senses : [];
+      entries.slice(0, 8).map(async (entry) => {
+        const senses = Array.isArray(entry?.senses) ? entry.senses : [];
         const translatedSenses = await Promise.all(
-          originalSenses.map(async (sense) => {
-            const englishDefinitions = Array.isArray(sense?.english_definitions)
-              ? sense.english_definitions.filter((def): def is string => typeof def === "string")
-              : [];
-            const partsOfSpeech = Array.isArray(sense?.parts_of_speech)
-              ? sense.parts_of_speech.filter((part): part is string => typeof part === "string")
-              : [];
-            const tags = Array.isArray(sense?.tags)
-              ? sense.tags.filter((tag): tag is string => typeof tag === "string")
-              : [];
-
-            const translatedDefinitions = language === "en"
-              ? englishDefinitions
-              : await Promise.all(englishDefinitions.slice(0, 2).map((def) => translateToVietnamese(def)));
-
+          senses.map(async (sense) => {
+            const englishDefs = (sense.english_definitions || []).filter(Boolean) as string[];
+            const translated_definitions = shouldTranslate
+              ? await Promise.all(englishDefs.slice(0, 2).map((d) => translateText(d, "en", "vi")))
+              : englishDefs;
             return {
               ...sense,
-              english_definitions: language === "en" ? englishDefinitions : translatedDefinitions,
-              parts_of_speech: partsOfSpeech,
-              tags,
-              translated_definitions: language === "en" ? englishDefinitions : translatedDefinitions,
+              english_definitions: englishDefs,
+              translated_definitions,
+              parts_of_speech: (sense.parts_of_speech || []).filter(Boolean),
+              tags: (sense.tags || []).filter(Boolean),
             };
           })
         );
-
-        return {
-          ...entry,
-          senses: translatedSenses,
-        };
+        return { ...entry, senses: translatedSenses };
       })
     );
 

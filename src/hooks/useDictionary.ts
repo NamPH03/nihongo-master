@@ -1,12 +1,14 @@
 // src/hooks/useDictionary.ts
-// Tìm kiếm từ vựng nội bộ trước, nếu không có thì mở rộng bằng API từ điển bên ngoài
+// Search flow mới:
+// 1. Tìm ngay trong vocabCache (substring, instant, có nghĩa VI chuẩn)
+// 2. Song song gọi Jisho API cho kết quả bổ sung (JP/EN/romaji)
+// 3. Không còn language toggle — tự động hiển thị VI nếu có, EN nếu không
 
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import type { DictionaryWord } from "@/types/dictionary";
+import { getAllVocabulary, type CachedVocabItem } from "@/lib/vocabCache";
 
 type SearchState = {
   results: DictionaryWord[];
@@ -26,105 +28,91 @@ type JishoEntry = {
   }>;
 };
 
-async function searchLocalVocabulary(q: string, language: "vi" | "en"): Promise<DictionaryWord[]> {
-  const vocabRef = collection(db, "vocabulary");
-  const seen = new Set<string>();
-  const results: DictionaryWord[] = [];
+// ─── Internal: tìm trong vocabCache (substring, O(n), instant) ───
+function searchInCache(allVocab: CachedVocabItem[], q: string): DictionaryWord[] {
+  const lower = q.toLowerCase().trim();
+  const scored: Array<{ item: CachedVocabItem; score: number }> = [];
 
-  const wordQuery = query(
-    vocabRef,
-    where("word", ">=", q),
-    where("word", "<=", q + "\uf8ff"),
-    limit(10)
-  );
+  for (const v of allVocab) {
+    let score = 0;
+    if (v.word === q) score += 10;
+    else if (v.word.startsWith(q)) score += 7;
+    else if (v.word.includes(q)) score += 4;
 
-  const readingQuery = query(
-    vocabRef,
-    where("reading", ">=", q),
-    where("reading", "<=", q + "\uf8ff"),
-    limit(10)
-  );
+    if (v.reading === q) score += 8;
+    else if (v.reading.startsWith(q)) score += 5;
+    else if (v.reading.includes(q)) score += 3;
 
-  const meaningQuery = query(
-    vocabRef,
-    where("meaning", ">=", q),
-    where("meaning", "<=", q + "\uf8ff"),
-    limit(10)
-  );
+    const meaningLower = v.meaning.toLowerCase();
+    if (meaningLower.startsWith(lower)) score += 6;
+    else if (meaningLower.includes(lower)) score += 2;
 
-  const [wordSnap, readingSnap, meaningSnap] = await Promise.all([
-    getDocs(wordQuery),
-    getDocs(readingQuery),
-    getDocs(meaningQuery),
-  ]);
+    if (score > 0) scored.push({ item: v, score });
+  }
 
-  [...wordSnap.docs, ...readingSnap.docs, ...meaningSnap.docs].forEach((doc) => {
-    if (seen.has(doc.id)) return;
-    seen.add(doc.id);
+  scored.sort((a, b) => b.score - a.score);
 
-    const data = doc.data();
-    results.push({
-      id: doc.id,
-      word: data.word || "",
-      reading: data.reading || "",
-      level: data.level || "N5",
-      difficultyLevel: getLevelNumber(data.level),
-      source: "local",
-      language: "vi-jp",
-      meanings: [{
-        partOfSpeech: (data.type || "khác") as DictionaryWord["meanings"][number]["partOfSpeech"],
-        definitions: [{
-          meaning: language === "en" ? (data.meaningEnglish || data.meaning || "") : (data.meaning || ""),
-          example: data.example || "",
-          exampleMeaning: data.exampleMeaning || "",
-        }],
+  return scored.slice(0, 5).map(({ item: v }) => ({
+    id: v.id,
+    word: v.word,
+    reading: v.reading,
+    level: v.level || "N5",
+    difficultyLevel: getLevelNumber(v.level),
+    source: "local",
+    language: "vi-jp",
+    meanings: [{
+      partOfSpeech: (v.type || "khác") as DictionaryWord["meanings"][number]["partOfSpeech"],
+      definitions: [{
+        meaning: v.meaning || "",
+        example: v.example || "",
+        exampleMeaning: v.exampleMeaning || "",
       }],
-    });
-  });
-
-  return results;
+    }],
+  }));
 }
 
-async function searchExternalDictionary(q: string, language: "vi" | "en"): Promise<DictionaryWord[]> {
-  const response = await fetch(`/api/dictionary/lookup?word=${encodeURIComponent(q.trim())}&lang=${language}`);
-  if (!response.ok) throw new Error("External lookup failed");
+// ─── External: Jisho API qua proxy route ───
+async function searchExternal(q: string): Promise<DictionaryWord[]> {
+  const response = await fetch(
+    `/api/dictionary/lookup?word=${encodeURIComponent(q.trim())}`
+  );
+  if (!response.ok) return [];
 
   const payload = await response.json();
   const entries: JishoEntry[] = payload?.data || [];
 
   return entries.slice(0, 5).map((entry, index) => {
     const japanese = entry.japanese?.[0];
-    const sense = entry.senses?.[0];
+    const senses = entry.senses || [];
     const word = japanese?.word || japanese?.reading || q.trim();
     const reading = japanese?.reading || "";
-    const translatedDefinitions = Array.isArray(sense?.translated_definitions)
-      ? sense.translated_definitions.filter(Boolean)
-      : [];
-    const englishDefinitions = Array.isArray(sense?.english_definitions)
-      ? sense.english_definitions.filter(Boolean)
-      : [];
-    const meaning = language === "en"
-      ? (englishDefinitions[0] || "")
-      : (translatedDefinitions[0] || englishDefinitions[0] || "");
-    const partOfSpeech = (sense?.parts_of_speech?.[0] || "khác") as DictionaryWord["meanings"][number]["partOfSpeech"];
+
+    const meanings = senses.slice(0, 3).map((sense) => {
+      const defs = sense.translated_definitions?.length
+        ? sense.translated_definitions
+        : sense.english_definitions || [];
+      const partOfSpeech = (sense.parts_of_speech?.[0] || "khác") as DictionaryWord["meanings"][number]["partOfSpeech"];
+      return {
+        partOfSpeech,
+        definitions: defs.slice(0, 2).map((m) => ({ meaning: m, example: "", exampleMeaning: "" })),
+      };
+    });
 
     return {
-      id: `${word}-${reading}-${index}`,
+      id: `ext-${word}-${reading}-${index}`,
       word,
       reading,
       level: "N5",
       difficultyLevel: 1,
-      source: "external",
-      language: language === "en" ? "en-jp" : "vi-jp",
-      meanings: [{
-        partOfSpeech,
-        definitions: [{ meaning, example: "", exampleMeaning: "" }],
-      }],
+      source: "external" as const,
+      language: "en-jp" as const,
+      meanings: meanings.length > 0 ? meanings : [{ partOfSpeech: "khác", definitions: [{ meaning: "", example: "", exampleMeaning: "" }] }],
     };
   });
 }
 
-export function useDictionary(language: "vi" | "en" = "vi") {
+// ─── Hook ───
+export function useDictionary() {
   const [state, setState] = useState<SearchState>({
     results: [],
     loading: false,
@@ -141,12 +129,7 @@ export function useDictionary(language: "vi" | "en" = "vi") {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
     if (!searchQuery.trim()) {
-      setState((prev) => ({
-        ...prev,
-        results: [],
-        hasSearched: false,
-        error: null,
-      }));
+      setState((prev) => ({ ...prev, results: [], hasSearched: false, error: null }));
       return;
     }
 
@@ -155,24 +138,30 @@ export function useDictionary(language: "vi" | "en" = "vi") {
 
       try {
         const q = searchQuery.trim();
-        const [remoteResults, localResults] = await Promise.all([
-          searchExternalDictionary(q, language),
-          searchLocalVocabulary(q, language),
+
+        // Chạy song song: cache (instant) + Jisho (network)
+        const [allVocab, externalResults] = await Promise.all([
+          getAllVocabulary(),
+          searchExternal(q),
         ]);
 
-        const mergedResults = [...remoteResults, ...localResults].filter((item, index, array) => {
-          const key = `${item.word}-${item.reading}-${item.source}`;
-          return array.findIndex((candidate) => `${candidate.word}-${candidate.reading}-${candidate.source}` === key) === index;
-        });
+        const localResults = searchInCache(allVocab, q);
+
+        // Merge: local lên trước, external bổ sung phía sau (dedup theo word+reading)
+        const seen = new Set(localResults.map((r) => `${r.word}|${r.reading}`));
+        const merged = [
+          ...localResults,
+          ...externalResults.filter((r) => !seen.has(`${r.word}|${r.reading}`)),
+        ];
 
         setState((prev) => ({
           ...prev,
-          results: mergedResults,
+          results: merged,
           loading: false,
           hasSearched: true,
         }));
-      } catch (error) {
-        console.error("Search error:", error);
+      } catch (err) {
+        console.error("Search error:", err);
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -180,25 +169,17 @@ export function useDictionary(language: "vi" | "en" = "vi") {
           hasSearched: true,
         }));
       }
-    }, 400);
-  }, [language]);
+    }, 350);
+  }, []);
 
   const clearSearch = useCallback(() => {
-    setState({
-      results: [],
-      loading: false,
-      error: null,
-      query: "",
-      hasSearched: false,
-    });
+    setState({ results: [], loading: false, error: null, query: "", hasSearched: false });
   }, []);
 
   return { ...state, search, clearSearch };
 }
 
 function getLevelNumber(level: string): number {
-  const map: Record<string, number> = {
-    N5: 1, N4: 2, N3: 3, N2: 4, N1: 5,
-  };
+  const map: Record<string, number> = { N5: 1, N4: 2, N3: 3, N2: 4, N1: 5 };
   return map[level] || 1;
 }

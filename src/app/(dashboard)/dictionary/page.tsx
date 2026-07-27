@@ -1,7 +1,7 @@
 // src/app/(dashboard)/dictionary/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -16,35 +16,23 @@ type Tab = "search" | "saved";
 
 export default function DictionaryPage() {
   const [tab, setTab] = useState<Tab>("search");
-  const [dictionaryLanguage, setDictionaryLanguage] = useState<"vi" | "en">("vi");
   const [userEmail, setUserEmail] = useState("");
   const [showHandwriting, setShowHandwriting] = useState(false);
   const router = useRouter();
-  const previousLanguage = useRef<"vi" | "en">("vi");
-  const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary(dictionaryLanguage);
+
+  // Hook mới — không cần language param
+  const { results, loading, error, query, hasSearched, search, clearSearch } = useDictionary();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        window.location.replace("/login");
-      } else {
-        setUserEmail(user.email || "");
-      }
+      if (!user) window.location.replace("/login");
+      else setUserEmail(user.email || "");
     });
     return () => unsubscribe();
   }, [router]);
 
-  useEffect(() => {
-    if (previousLanguage.current !== dictionaryLanguage) {
-      previousLanguage.current = dictionaryLanguage;
-      if (query.trim()) search(query);
-      else clearSearch();
-    }
-  }, [dictionaryLanguage, query, search, clearSearch]);
-
   const handleSelectHandwritingChar = (char: string) => {
-    const newQuery = query + char;
-    search(newQuery);
+    search(query + char);
   };
 
   return (
@@ -54,46 +42,29 @@ export default function DictionaryPage() {
       <div className="max-w-2xl mx-auto px-4 py-6">
 
         {/* Header */}
-        <div className="mb-6 animate-fade-up">
+        <div className="mb-5 animate-fade-up">
           <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>Từ điển</h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Tra cứu từ vựng tiếng Nhật, phân tích Kanji chi tiết
+            Tra từ tiếng Nhật, Hiragana, Romaji hoặc tiếng Việt
           </p>
         </div>
 
-        {/* Language selector + tabs */}
-        <div className="card p-4 mb-5 flex flex-col gap-3 animate-fade-up">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium min-w-max" style={{ color: "var(--text-muted)" }}>
-              Ngôn ngữ nghĩa:
-            </label>
-            <select
-              value={dictionaryLanguage}
-              onChange={(e) => setDictionaryLanguage(e.target.value as "vi" | "en")}
-              className="input flex-1 font-sans"
-              style={{ padding: "0.5rem 0.75rem" }}
+        {/* Tabs */}
+        <div className="card p-1.5 mb-5 flex gap-1.5 animate-fade-up rounded-2xl">
+          {(["search", "saved"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+              style={
+                tab === t
+                  ? { background: "var(--primary)", color: "#0d1f14" }
+                  : { color: "var(--text-muted)" }
+              }
             >
-              <option value="vi">🇻🇳 Tiếng Việt</option>
-              <option value="en">🇬🇧 English</option>
-            </select>
-          </div>
-
-          <div className="flex gap-2">
-            {(["search", "saved"] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className="flex-1 py-2 rounded-xl text-sm font-medium transition-all duration-200 ease-spring"
-                style={
-                  tab === t
-                    ? { background: "var(--primary)", color: "#0d1f14" }
-                    : { background: "var(--surface-2)", color: "var(--text-muted)" }
-                }
-              >
-                {t === "search" ? "🔍 Tra từ" : "📌 Kho từ của tôi"}
-              </button>
-            ))}
-          </div>
+              {t === "search" ? "🔍 Tra từ" : "📚 Kho từ của tôi"}
+            </button>
+          ))}
         </div>
 
         {/* Tab: Search */}
@@ -106,12 +77,9 @@ export default function DictionaryPage() {
               loading={loading}
               showHandwriting={showHandwriting}
               onToggleHandwriting={() => setShowHandwriting(!showHandwriting)}
-              placeholder={dictionaryLanguage === "vi"
-                ? "Nhập từ tiếng Nhật, tiếng Việt hoặc hiragana..."
-                : "Enter Japanese, English or hiragana..."}
+              placeholder="Nhập tiếng Nhật, Hiragana, Romaji hoặc tiếng Việt..."
             />
 
-            {/* Panel vẽ tay */}
             {showHandwriting && (
               <div className="animate-scale-in">
                 <HandwritingCanvas
@@ -131,10 +99,13 @@ export default function DictionaryPage() {
 
               {!hasSearched && !loading && (
                 <div className="text-center py-16 animate-fade-in">
-                  <div className="text-5xl mb-3">🔍</div>
-                  <p style={{ color: "var(--text-muted)" }}>Nhập từ để tra cứu hoặc vẽ tay</p>
-                  <p className="text-sm mt-1" style={{ color: "var(--text-faint)" }}>
-                    Ví dụ: 食べる · たべる · ăn · eat
+                  <div className="text-5xl mb-4">🔍</div>
+                  <p className="font-medium" style={{ color: "var(--text-muted)" }}>Nhập từ để tra cứu</p>
+                  <p className="text-sm mt-2" style={{ color: "var(--text-faint)" }}>
+                    Ví dụ: <span className="font-jp">食べる</span> · たべる · taberu · ăn
+                  </p>
+                  <p className="text-[11px] mt-4 max-w-xs mx-auto" style={{ color: "var(--text-faint)" }}>
+                    Tìm kiếm ưu tiên từ vựng trong kho từ (có nghĩa tiếng Việt chuẩn), sau đó mở rộng ra Jisho
                   </p>
                 </div>
               )}
@@ -143,7 +114,10 @@ export default function DictionaryPage() {
                 <div className="text-center py-16 animate-fade-in">
                   <div className="text-5xl mb-3">😕</div>
                   <p style={{ color: "var(--text-muted)" }}>
-                    Không tìm thấy từ <strong>&quot;{query}&quot;</strong>
+                    Không tìm thấy <strong>&quot;{query}&quot;</strong>
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: "var(--text-faint)" }}>
+                    Thử tìm bằng tiếng Nhật hoặc romaji để có kết quả tốt hơn
                   </p>
                 </div>
               )}
