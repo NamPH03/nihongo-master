@@ -58,17 +58,32 @@ function pickRandom<T>(arr: T[]): T {
 
 function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
   const correctValue = type === "word" ? correct.word : correct.meaning;
-  // Tìm trong allWords xem có đúng item này không, nếu không tạo pool từ tất cả từ khác ngoại trừ correct
-  const pool = allWords.filter((w) => {
-    if (w.word === correct.word && w.meaning === correct.meaning) return false;
-    if (type === "meaning" && hasJapanese(w.meaning)) return false;
-    const val = type === "word" ? w.word : w.meaning;
-    return val && val !== correctValue;
-  });
-  const others = pool.sort(() => Math.random() - 0.5).slice(0, 3);
-  const otherValues = others.map((w) => type === "word" ? w.word : w.meaning);
-  // Đảm bảo correctValue luôn luôn được đưa vào danh sách đáp án
-  return [correctValue, ...otherValues].sort(() => Math.random() - 0.5);
+
+  // Pool: lọc bỏ chính từ hiện tại và các giá trị trùng với đáp án đúng
+  const pool = allWords
+    .filter((w) => {
+      if (w.word === correct.word && w.meaning === correct.meaning) return false;
+      if (type === "meaning" && hasJapanese(w.meaning)) return false;
+      const val = type === "word" ? w.word : w.meaning;
+      return val && val.trim() !== "" && val !== correctValue;
+    })
+    .map((w) => (type === "word" ? w.word : w.meaning))
+    .filter((v, i, arr) => arr.indexOf(v) === i); // dedup
+
+  // Xào trộn pool và lấy 3 lựa chọn sai
+  const shuffledPool = pool.sort(() => Math.random() - 0.5);
+  const others = shuffledPool.slice(0, 3);
+
+  // Đảm bảo luôn có đúng 4 đáp án, correctValue luôn nằm trong danh sách
+  const allChoices = [correctValue, ...others];
+
+  // Nếu không đủ 4 (pool quá nhỏ), pad bằng các giá trị dummy
+  while (allChoices.length < 4) {
+    allChoices.push(`― (không có)`);
+  }
+
+  // Xào trộn vị trí các đáp án (đảm bảo correctValue ở vị trí ngẫu nhiên)
+  return allChoices.sort(() => Math.random() - 0.5);
 }
 
 // ===== MAIN COMPONENT =====
@@ -252,12 +267,14 @@ export default function ReviewPage() {
 
   const currentWord = dueWords[currentIndex];
 
-  // Chỉ tự động phát âm thanh ở bước listening hoặc khi VỪA BẤM KIỂM TRÁ (isChecked = true)
+  // Tự động phát âm ở bước listening
   useEffect(() => {
-    if (isChecked && currentWord) {
-      speakJapanese(currentWord.word, false);
+    if (currentStep === "listening" && currentWord && !isChecked) {
+      const t = setTimeout(() => speakJapanese(currentWord.word, false), 300);
+      return () => clearTimeout(t);
     }
-  }, [isChecked, currentWord]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, currentWord?.wordId]);
 
   const kanjiChars = currentWord ? getKanjiChars(currentWord.word) : [];
 

@@ -8,9 +8,9 @@ const nextConfig = {
     formats: ["image/avif", "image/webp"],
   },
 
-  // server-side packages — không bundle vào client
+  // server-side packages — Next.js 14 syntax (Next.js 15+ uses serverExternalPackages)
   experimental: {
-    serverExternalPackages: ["firebase-admin", "pdf-parse"],
+    serverComponentsExternalPackages: ["firebase-admin"],
   },
 
   // Cache headers cho static assets  
