@@ -210,8 +210,10 @@ export default function StudySession({
     setCurrentIndex(nextIndex);
     setCurrentStep("flashcard");
     setIsFlipped(false);
+    setSelectedChoice(null);
     setSelectedAnswer(null);
     setAnswerStatus("idle");
+    setIsChecked(false);
     setRecognizedCandidates([]);
     setShowKanjiHint(null);
     const nextWord = sessionWords[nextIndex];
@@ -234,40 +236,56 @@ export default function StudySession({
   // Phím tắt bàn phím
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (loading || currentIndex >= sessionWords.length) return;
+      if (loading || currentIndex >= sessionWords.length || currentStep === "result") return;
 
       if (e.key === "Enter") {
         e.preventDefault();
+
+        // Flashcard: lật thẻ hoặc tiếp tục
+        if (currentStep === "flashcard") {
+          if (!isFlipped) setIsFlipped(true);
+          else nextStep();
+          return;
+        }
+
+        // Kanji: tiếp tục
+        if (currentStep === "kanji") {
+          nextStep();
+          return;
+        }
+
+        // Write-kanji: kiểm tra hoặc tiếp tục
+        if (currentStep === "write-kanji") {
+          if (answerStatus !== "idle") nextStep();
+          else if (recognizedCandidates.length > 0) checkDrawingKanji();
+          return;
+        }
+
+        // Trắc nghiệm: kiểm tra hoặc tiếp tục
         if (!isChecked) {
-          if ((currentStep === "meaning-to-word" || currentStep === "listening") && selectedChoice) {
-            handleCheckAnswer();
-          }
+          if (selectedChoice) handleCheckAnswer();
         } else {
-          if (Date.now() >= canAdvanceRef.current) {
-            nextStep();
-          }
+          if (Date.now() >= canAdvanceRef.current) nextStep();
         }
         return;
       }
 
+      // Phím 1-4 chọn đáp án
       if (
-        !loading &&
         !isChecked &&
         ["1", "2", "3", "4"].includes(e.key) &&
         (currentStep === "meaning-to-word" || currentStep === "listening")
       ) {
         e.preventDefault();
         const idx = parseInt(e.key) - 1;
-        if (choices[idx]) {
-          handleSelectChoice(choices[idx]);
-        }
+        if (choices[idx]) handleSelectChoice(choices[idx]);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, currentIndex, sessionWords, currentStep, isFlipped, isChecked, selectedChoice, choices]);
+  }, [loading, currentIndex, sessionWords, currentStep, isFlipped, isChecked, selectedChoice, choices, answerStatus, recognizedCandidates]);
 
   const handleSkipWord = async () => {
     await goNextWord();

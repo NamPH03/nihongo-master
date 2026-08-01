@@ -259,7 +259,7 @@ export default function HandwritingCanvas({ onSelectWord, onClose, strokeGuideCh
             candidates.map((char) => (
               <button
                 key={char}
-                onClick={() => onSelectWord(char)}
+                onClick={() => { onSelectWord(char); clearCanvas(); }}
                 className="font-jp text-lg font-bold w-9 h-9 rounded-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
                 style={{ background: "var(--surface-3)", color: "var(--text)" }}
               >
