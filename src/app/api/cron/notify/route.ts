@@ -131,10 +131,7 @@ export async function GET(req: NextRequest) {
   let totalSent = 0;
   const errors: string[] = [];
 
-  // Load vocabulary IDs một lần duy nhất (dùng để filter orphan progress docs)
-  const vocabSnap = await adminDb.collection('vocabulary').get();
-  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
-
+  // Đếm số từ đến hạn ôn tập cho từng user (giảm 3135 reads/lần xuống 0 read từ vựng)
   for (const userId of userIds) {
     const tokens = userTokens[userId];
 
@@ -148,13 +145,11 @@ export async function GET(req: NextRequest) {
       const notifStateSnap = await notifStateRef.get();
       const notifState = notifStateSnap.data() || {};
 
-      // Đếm số từ đến hạn ôn tập (chỉ đếm từ có trong vocabulary, bỏ orphan)
+      // Đếm số từ đến hạn ôn tập
       const progressSnap = await adminDb.collection(`users/${userId}/progress`).get();
       let dueCount = 0;
       progressSnap.forEach((doc) => {
         if (doc.id === 'stats') return;
-        // Bỏ qua orphan docs không có trong collection vocabulary
-        if (!vocabIds.has(doc.id)) return;
         const data = doc.data();
         if (data.status !== 'learned') return;
         if (!data.nextReview || data.nextReview <= now) dueCount++;
