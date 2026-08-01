@@ -153,11 +153,29 @@ export default function ProfilePage() {
   const canChangePassword = currentUser ? hasPasswordProvider(currentUser) : false;
 
   if (loading) return (
-    <div className="min-h-[100dvh] bg-page flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
-        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải...</p>
+    <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
+      <div className="max-w-xl mx-auto px-4 py-6 space-y-6">
+        {/* Skeleton Navbar */}
+        <div className="h-14 w-full rounded-2xl animate-pulse bg-[var(--surface-2)]" />
+        
+        {/* Skeleton Header */}
+        <div className="space-y-2 animate-pulse">
+          <div className="h-7 w-1/3 rounded-xl bg-[var(--surface-3)]" />
+          <div className="h-4 w-1/2 rounded-xl bg-[var(--surface-3)]" />
+        </div>
+
+        {/* Skeleton User Card */}
+        <div className="card p-6 rounded-3xl animate-pulse flex flex-col items-center gap-4" style={{ background: "var(--surface-2)" }}>
+          <div className="w-20 h-20 rounded-full bg-[var(--surface-3)]" />
+          <div className="h-6 w-1/3 rounded-xl bg-[var(--surface-3)]" />
+          <div className="h-4 w-1/2 rounded-xl bg-[var(--surface-3)]" />
+        </div>
+
+        {/* Skeleton Stat Grid */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="h-24 rounded-3xl bg-[var(--surface-2)] animate-pulse" />
+          <div className="h-24 rounded-3xl bg-[var(--surface-2)] animate-pulse" />
+        </div>
       </div>
     </div>
   );

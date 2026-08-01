@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import SplashScreen from "@/components/ui/SplashScreen";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="min-h-screen bg-page text-tx antialiased">
+        <SplashScreen />
         {children}
       </body>
     </html>

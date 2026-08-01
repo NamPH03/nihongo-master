@@ -91,11 +91,20 @@ export default function LearnHomePage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }} />
-              <div className="text-sm" style={{ color: "var(--text-muted)" }}>Đang tải khoá học...</div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="card p-6 rounded-3xl animate-pulse space-y-4" style={{ background: "var(--surface-2)" }}>
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--surface-3)]" />
+                  <div className="w-16 h-6 rounded-full bg-[var(--surface-3)]" />
+                </div>
+                <div className="space-y-2 pt-2">
+                  <div className="h-6 w-3/4 rounded-xl bg-[var(--surface-3)]" />
+                  <div className="h-4 w-1/2 rounded-xl bg-[var(--surface-3)]" />
+                </div>
+                <div className="h-12 w-full rounded-2xl bg-[var(--surface-3)] pt-2" />
+              </div>
+            ))}
           </div>
         ) : courses.length === 0 ? (
           <div className="card p-10 rounded-3xl text-center">
