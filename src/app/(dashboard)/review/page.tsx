@@ -258,8 +258,7 @@ export default function ReviewPage() {
     setCurrentKanjiIdx(0);
     clearCanvas();
     if (picked === "meaning-to-word") setChoices(generateChoices(word, allWords, "word"));
-    else if (picked === "word-to-meaning") setChoices(generateChoices(word, allWords, "meaning"));
-    else if (picked === "listening") { setChoices(generateChoices(word, allWords, "meaning")); setTimeout(() => speakJapanese(word.word, false), 300); }
+    else if (picked === "word-to-meaning" || picked === "listening") setChoices(generateChoices(word, allWords, "meaning"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allWords]);
 
@@ -341,8 +340,7 @@ export default function ReviewPage() {
       clearCanvas();
 
       if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
-      else if (next === "word-to-meaning") setChoices(generateChoices(currentWord, allWords, "meaning"));
-      else if (next === "listening") { setChoices(generateChoices(currentWord, allWords, "meaning")); setTimeout(() => speakJapanese(currentWord.word, false), 400); }
+      else if (next === "word-to-meaning" || next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
     } else {
       // Khi đã trả lời ĐÚNG → chuyển sang từ tiếp theo
       await finishWord(!forgotThisWord);
