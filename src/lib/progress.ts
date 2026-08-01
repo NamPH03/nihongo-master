@@ -66,20 +66,6 @@ export async function saveWordFromDictionary(
   }, { merge: true });
 }
 
-// Lưu từ mới vào lịch học (status: "new") — dùng cho luồng học từ bài học khóa học
-// @deprecated — dùng saveWordFromDictionary cho từ điển, markNewWordLearned sau khi học xong
-export async function saveWordToSchedule(
-  userId: string,
-  wordId: string
-): Promise<void> {
-  await setDoc(wordProgressRef(userId, wordId), {
-    wordId,
-    srLevel: 0,
-    nextReview: null,
-    status: "new",
-    lastReviewed: null,
-  }, { merge: true });
-}
 
 // Đánh dấu từ đã học xong lần đầu → mức 1
 export async function markNewWordLearned(

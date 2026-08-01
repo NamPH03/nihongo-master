@@ -17,7 +17,7 @@ type Vocabulary = {
   example?: string; exampleMeaning?: string;
 };
 type ReviewWord = CachedVocabItem & { wordId: string; srLevel: number; nextReview: string; };
-type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening" | "write-kanji";
+type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening";
 
 const BASE_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "listening"];
 
@@ -26,7 +26,6 @@ const stepLabel: Record<ReviewStep, string> = {
   "word-to-meaning": "Nhìn từ → Chọn nghĩa",
   "type-reading": "Gõ cách đọc",
   "listening": "Nghe → Chọn nghĩa",
-  "write-kanji": "✍️ Vẽ chữ Hán",
 };
 
 // ===== HELPERS =====
@@ -41,11 +40,10 @@ function getKanjiChars(str: string): string[] {
 /** Tạo danh sách bước ôn phù hợp cho từng từ */
 function getStepsForWord(word: ReviewWord): ReviewStep[] {
   const steps: ReviewStep[] = [...BASE_STEPS];
-  // Chỉ thêm type-reading và write-kanji nếu từ THỰC SỰ có chứa Kanji
+  // Chỉ thêm type-reading nếu từ THỰC SỰ có chứa Kanji
   const kanjiCount = getKanjiChars(word.word || "").length;
   if (kanjiCount > 0) {
     steps.push("type-reading");
-    steps.push("write-kanji");
   }
   return steps;
 }
@@ -91,7 +89,6 @@ function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "wor
 // ===== MAIN COMPONENT =====
 export default function ReviewPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const kanjiCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // ─── State ───
   const [dueWords, setDueWords] = useState<ReviewWord[]>([]);
@@ -113,16 +110,6 @@ export default function ReviewPage() {
   const [showFurigana, setShowFurigana] = useState(true);
   // Track từ đã sai và đã tái chèn vào queue để không tái chèn lần 2
   const [reinsertedWordIds, setReinsertedWordIds] = useState<Set<string>>(new Set());
-
-  // ─── Kanji drawing state ───
-  const [drawnChars, setDrawnChars] = useState<string[]>([]); // các ký tự đã vẽ xác nhận
-  const [currentKanjiIdx, setCurrentKanjiIdx] = useState(0); // đang vẽ chữ thứ mấy
-  const [candidates, setCandidates] = useState<string[]>([]);
-  const [isRecognizing, setIsRecognizing] = useState(false);
-
-  const strokesRef = useRef<Array<Array<[number, number, number]>>>([[]]);
-  const lastTimeRef = useRef<number>(0);
-  const isDrawingRef = useRef(false);
 
   const router = useRouter();
   // Track đã gọi markStudiedToday trong phiên này chưa
@@ -164,85 +151,6 @@ export default function ReviewPage() {
     return () => unsub();
   }, [router]);
 
-  // ─── Handwriting logic ───
-  const getCoords = (e: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    if ("touches" in e) {
-      if (e.touches.length === 0) return { x: 0, y: 0 };
-      return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
-    }
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
-  };
-
-  const startDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const canvas = kanjiCanvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const { x, y } = getCoords(e.nativeEvent, canvas);
-    ctx.beginPath(); ctx.moveTo(x, y);
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.lineWidth = 5; ctx.strokeStyle = "#1a1a1a";
-    isDrawingRef.current = true;
-    lastTimeRef.current = Date.now();
-    if (strokesRef.current[strokesRef.current.length - 1].length > 0) {
-      strokesRef.current.push([]);
-    }
-    strokesRef.current[strokesRef.current.length - 1].push([x, y, 0]);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) return;
-    e.preventDefault();
-    const canvas = kanjiCanvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    const { x, y } = getCoords(e.nativeEvent, canvas);
-    ctx.lineTo(x, y); ctx.stroke();
-    const duration = Date.now() - lastTimeRef.current;
-    strokesRef.current[strokesRef.current.length - 1].push([x, y, duration]);
-  };
-
-  const stopDraw = () => {
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    recognize();
-  };
-
-  const recognize = async () => {
-    const canvas = kanjiCanvasRef.current; if (!canvas) return;
-    const validStrokes = strokesRef.current.filter((s) => s.length > 0);
-    if (validStrokes.length === 0) return;
-    setIsRecognizing(true);
-    const ink = validStrokes.map((stroke) => [
-      stroke.map((pt) => Math.round(pt[0])),
-      stroke.map((pt) => Math.round(pt[1])),
-      stroke.map((pt) => pt[2]),
-    ]);
-    try {
-      const res = await fetch("https://www.google.com.tw/inputtools/request?ime=handwriting&app=mobilesearch&cs=1&oe=utf-8", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          app_version: 0.4, api_level: "533.0", device: "", input_type: 0, options: "enable_pre_space",
-          requests: [{ writing_area_width: canvas.width, writing_area_height: canvas.height, ink, language: "ja" }],
-        }),
-      });
-      if (!res.ok) throw new Error("API error");
-      const data = await res.json();
-      if (data && data[0] === "SUCCESS") setCandidates((data[1][0][1] || []).slice(0, 8));
-    } catch { /* silent */ }
-    finally { setIsRecognizing(false); }
-  };
-
-  const clearCanvas = () => {
-    const canvas = kanjiCanvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d"); if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokesRef.current = [[]];
-    setCandidates([]);
-  };
-
   // ─── Init word ───
   const initWord = useCallback((word: ReviewWord, usedSoFar: ReviewStep[]) => {
     const available = getStepsForWord(word).filter((s) => !usedSoFar.includes(s));
@@ -256,9 +164,6 @@ export default function ReviewPage() {
     setIsChecked(false);
     setTypedAnswer("");
     setForgotThisWord(false);
-    setDrawnChars([]);
-    setCurrentKanjiIdx(0);
-    clearCanvas();
     if (picked === "meaning-to-word") setChoices(generateChoices(word, allWords, "word"));
     else if (picked === "word-to-meaning" || picked === "listening") setChoices(generateChoices(word, allWords, "meaning"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -291,24 +196,7 @@ export default function ReviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, currentWord?.wordId, isChecked]);
 
-  const kanjiChars = currentWord ? getKanjiChars(currentWord.word) : [];
 
-  // ─── Confirm một ký tự kanji đã vẽ ───
-  const confirmKanjiChar = (char: string) => {
-    const newDrawn = [...drawnChars, char];
-    setDrawnChars(newDrawn);
-    clearCanvas();
-    const nextIdx = currentKanjiIdx + 1;
-    if (nextIdx >= kanjiChars.length) {
-      // Đã vẽ đủ tất cả ký tự → kiểm tra
-      const drawn = newDrawn.join("");
-      const correct = kanjiChars.join("");
-      setAnswerStatus(drawn === correct ? "correct" : "wrong");
-      setIsChecked(true);
-    } else {
-      setCurrentKanjiIdx(nextIdx);
-    }
-  };
 
   // ─── Handle result (khi bấm nút "Tiếp tục" ở bottom bar) ───
   const handleResult = async (remembered: boolean) => {
@@ -340,9 +228,6 @@ export default function ReviewPage() {
       setAnswerStatus("idle");
       setIsChecked(false);
       setTypedAnswer("");
-      setDrawnChars([]);
-      setCurrentKanjiIdx(0);
-      clearCanvas();
 
       if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
       else if (next === "word-to-meaning" || next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
@@ -440,7 +325,7 @@ export default function ReviewPage() {
       if (e.key === "Enter") {
         e.preventDefault();
         if (!isChecked) {
-          if (currentStep !== "write-kanji" && selectedChoice) handleCheckAnswer();
+          if (selectedChoice) handleCheckAnswer();
         } else {
           // Chỉ cho phép chuyển từ nếu đã qua debounce 500ms VÀ không đang xử lý
           if (Date.now() >= canAdvanceRef.current && !isProcessingRef.current) {
@@ -450,7 +335,7 @@ export default function ReviewPage() {
         return;
       }
 
-      if (currentStep !== "type-reading" && currentStep !== "write-kanji" && !isChecked && ["1","2","3","4"].includes(e.key)) {
+      if (currentStep !== "type-reading" && !isChecked && ["1","2","3","4"].includes(e.key)) {
         e.preventDefault();
         const idx = parseInt(e.key) - 1;
         if (choices[idx]) handleSelectChoice(choices[idx]);
@@ -465,19 +350,7 @@ export default function ReviewPage() {
     if (currentStep === "type-reading" && !isChecked && inputRef.current) inputRef.current.focus();
   }, [currentStep, isChecked, currentIndex]);
 
-  // ─── Canvas resize ───
-  useEffect(() => {
-    const canvas = kanjiCanvasRef.current;
-    if (!canvas) return;
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, [currentStep, currentKanjiIdx]);
+
 
   // ─── Choice styles ───
   const getChoiceStyle = (choice: string): React.CSSProperties => {
@@ -682,118 +555,7 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {/* ===== WRITE KANJI ===== */}
-        {currentStep === "write-kanji" && currentWord && (
-          <div className="card p-6 animate-scale-in rounded-3xl">
-            {/* Header: nghĩa + cách đọc làm hint */}
-            <div className="text-center mb-5">
-              <p className="text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-faint)" }}>
-                Vẽ chữ Hán
-              </p>
-              <div className="text-2xl font-bold mb-1" style={{ color: "var(--text)" }}>{currentWord.meaning}</div>
-              <div className="font-jp text-lg" style={{ color: "var(--primary)" }}>{currentWord.reading}</div>
-            </div>
 
-            {/* Tiến độ vẽ từng ký tự */}
-            {!isChecked && (
-              <div className="flex items-center justify-center gap-2 mb-4">
-                {kanjiChars.map((char, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-1">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-jp text-xl font-bold border-2 transition-all"
-                      style={{
-                        borderColor: idx < drawnChars.length ? "var(--primary)" : idx === currentKanjiIdx ? "var(--primary)" : "var(--border-color)",
-                        background: idx < drawnChars.length ? "rgba(34,197,94,0.12)" : idx === currentKanjiIdx ? "var(--primary-glow)" : "var(--surface-2)",
-                        color: idx < drawnChars.length ? "var(--primary)" : "var(--text-muted)",
-                      }}
-                    >
-                      {idx < drawnChars.length ? drawnChars[idx] : (idx === currentKanjiIdx ? "?" : "·")}
-                    </div>
-                    <div className="text-[10px]" style={{ color: "var(--text-faint)" }}>{idx + 1}/{kanjiChars.length}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Kết quả sau khi vẽ xong */}
-            {isChecked && (
-              <div className="flex items-center justify-center gap-3 mb-4 animate-fade-in">
-                <div className="font-jp text-4xl font-bold" style={{ color: "var(--text)" }}>
-                  {kanjiChars.join("")}
-                </div>
-                <div className="font-jp text-4xl font-bold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
-                  {drawnChars.join("")}
-                </div>
-              </div>
-            )}
-
-            {/* Canvas vẽ */}
-            {!isChecked && (
-              <>
-                <div className="text-center text-xs mb-2 font-semibold" style={{ color: "var(--text-muted)" }}>
-                  Vẽ chữ thứ {currentKanjiIdx + 1}/{kanjiChars.length}
-                </div>
-                <div className="relative rounded-2xl overflow-hidden mx-auto shadow-inner mb-4 animate-scale-in"
-                  style={{ background: "#ffffff", border: "2px solid var(--border-color)", width: "100%", maxWidth: 280, aspectRatio: "1/1" }}>
-                  {/* Ảnh hướng dẫn nét vẽ mờ — chỉ hiện khi srLevel <= 4 */}
-                  {currentWord.srLevel <= 4 && kanjiChars[currentKanjiIdx] && (() => {
-                    const hex = kanjiChars[currentKanjiIdx].codePointAt(0)?.toString(16).padStart(5, "0");
-                    if (!hex) return null;
-                    const strokeSrc = `/kanji/${hex}.svg`;
-                    // eslint-disable-next-line @next/next/no-img-element
-                    return <img src={strokeSrc} alt="" aria-hidden className="absolute inset-0 w-full h-full select-none" style={{ opacity: 0.18, objectFit: "contain", pointerEvents: "none" }} />;
-                  })()}
-                  <canvas
-                    ref={kanjiCanvasRef}
-                    onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
-                    onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw}
-                    className="absolute inset-0 w-full h-full cursor-crosshair touch-none"
-                  />
-                  {isRecognizing && (
-                    <div className="absolute top-2 right-2 text-[10px] font-semibold animate-pulse" style={{ color: "var(--primary)" }}>
-                      Đang nhận dạng...
-                    </div>
-                  )}
-                </div>
-
-                {/* Nút xóa */}
-                <div className="flex justify-center mb-4">
-                  <button onClick={clearCanvas} className="btn btn-ghost py-1.5 px-4 text-xs rounded-xl flex items-center gap-1.5">
-                    🗑 Xóa bảng
-                  </button>
-                </div>
-
-                {/* Ký tự gợi ý */}
-                {candidates.length > 0 && (
-                  <div className="mb-2">
-                    <p className="text-[10px] uppercase font-bold tracking-wider mb-2" style={{ color: "var(--text-faint)" }}>
-                      Chọn chữ bạn vừa vẽ:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {candidates.map((char) => (
-                        <button
-                          key={char}
-                          onClick={() => confirmKanjiChar(char)}
-                          className="font-jp text-xl font-bold w-10 h-10 rounded-xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all border"
-                          style={{
-                            background: char === kanjiChars[currentKanjiIdx] ? "rgba(34,197,94,0.1)" : "var(--surface-3)",
-                            color: "var(--text)",
-                            borderColor: char === kanjiChars[currentKanjiIdx] ? "var(--primary)" : "transparent",
-                          }}
-                        >
-                          {char}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {candidates.length === 0 && !isRecognizing && (
-                  <p className="text-xs text-center italic" style={{ color: "var(--text-faint)" }}>Hãy vẽ chữ Hán lên bảng...</p>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ===== BOTTOM BAR ===== */}
@@ -820,7 +582,6 @@ export default function ReviewPage() {
                       Đáp án đúng:{" "}
                       <span className="font-bold font-jp text-lg" style={{ color: "var(--primary)" }}>
                         {currentStep === "type-reading" ? currentWord.reading
-                          : currentStep === "write-kanji" ? kanjiChars.join("")
                           : currentStep === "meaning-to-word" ? currentWord.word
                           : currentWord.meaning}
                       </span>
@@ -843,47 +604,25 @@ export default function ReviewPage() {
                 </div>
               </>
             )}
-            {!isChecked && currentStep !== "write-kanji" && (
-              <p className="text-sm hidden sm:block" style={{ color: "var(--text-muted)" }}>
-                {currentStep === "type-reading" ? "Nhập câu trả lời bằng hiragana rồi nhấn Kiểm tra" : "Chọn đáp án phù hợp nhất ở phía trên"}
-              </p>
-            )}
-            {!isChecked && currentStep === "write-kanji" && (
-              <p className="text-sm hidden sm:block" style={{ color: "var(--text-muted)" }}>
-                Vẽ từng chữ Hán và chọn ký tự nhận dạng được
-              </p>
-            )}
-          </div>
-
-          {/* Nút hành động */}
-          <div className="flex-shrink-0 flex flex-col items-center gap-2">
             {!isChecked ? (
               <>
-                {currentStep !== "write-kanji" && (
-                  <button
-                    onClick={handleCheckAnswer}
-                    disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
-                    className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
-                    style={{
-                      background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "var(--primary)" : "var(--surface-3)",
-                      color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "#0d1f14" : "var(--text-faint)",
-                      cursor: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    Kiểm tra
-                  </button>
-                )}
+                <button
+                  onClick={handleCheckAnswer}
+                  disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
+                  className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
+                  style={{
+                    background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "var(--primary)" : "var(--surface-3)",
+                    color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "#0d1f14" : "var(--text-faint)",
+                    cursor: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Kiểm tra
+                </button>
                 <button
                   onClick={() => {
-                    if (currentStep === "write-kanji") {
-                      setDrawnChars([]);
-                      setAnswerStatus("wrong");
-                      setIsChecked(true);
-                    } else {
-                      setSelectedAnswer(selectedChoice || "");
-                      setAnswerStatus("wrong");
-                      setIsChecked(true);
-                    }
+                    setSelectedAnswer(selectedChoice || "");
+                    setAnswerStatus("wrong");
+                    setIsChecked(true);
                   }}
                   className="text-xs font-semibold underline py-1 transition-colors hover:text-red-500"
                   style={{ color: "var(--text-muted)" }}
