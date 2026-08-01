@@ -203,38 +203,43 @@ export default function ReviewPage() {
     // Chống double-click/double-Enter trong khi đang xử lý async Firestore
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
-    const isRecheck = reinsertedWordIds.has(currentWord.wordId);
 
-    if (!remembered) {
-      setForgotThisWord(true);
-      // Lần đầu sai → finishWord(false) để trừ điểm SRS & chèn vào vị trí ngẫu nhiên phía sau, rồi chuyển sang từ khác ngay
-      if (!isRecheck) {
-        await finishWord(false);
-        return;
+    try {
+      const isRecheck = reinsertedWordIds.has(currentWord.wordId);
+
+      if (!remembered) {
+        setForgotThisWord(true);
+        // Lần đầu sai → finishWord(false) để trừ điểm SRS & chèn vào vị trí ngẫu nhiên phía sau, rồi chuyển sang từ khác ngay
+        if (!isRecheck) {
+          await finishWord(false);
+          return;
+        }
+
+        // Nếu gặp lại (recheck) mà vẫn sai → không bị trừ điểm SRS nữa, mà tiếp tục đổi dạng câu hỏi cho từ này ngay tại chỗ đến khi làm đúng mới thôi
+        const allPossibleSteps = getStepsForWord(currentWord);
+        let available = remainingSteps.length > 0 ? remainingSteps : allPossibleSteps.filter(s => s !== currentStep);
+        if (available.length === 0) available = allPossibleSteps;
+
+        const next = pickRandom(available);
+        const newRemaining = available.filter((s) => s !== next);
+
+        setCurrentStep(next);
+        setRemainingSteps(newRemaining);
+        setSelectedChoice(null);
+        setSelectedAnswer(null);
+        setAnswerStatus("idle");
+        setIsChecked(false);
+        setTypedAnswer("");
+
+        if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
+        else if (next === "word-to-meaning" || next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
+      } else {
+        // Khi đã trả lời ĐÚNG → chuyển sang từ tiếp theo
+        await finishWord(!forgotThisWord);
       }
-
-      // Nếu gặp lại (recheck) mà vẫn sai → không bị trừ điểm SRS nữa, mà tiếp tục đổi dạng câu hỏi cho từ này ngay tại chỗ đến khi làm đúng mới thôi
-      const allPossibleSteps = getStepsForWord(currentWord);
-      let available = remainingSteps.length > 0 ? remainingSteps : allPossibleSteps.filter(s => s !== currentStep);
-      if (available.length === 0) available = allPossibleSteps;
-
-      const next = pickRandom(available);
-      const newRemaining = available.filter((s) => s !== next);
-
-      setCurrentStep(next);
-      setRemainingSteps(newRemaining);
-      setSelectedChoice(null);
-      setSelectedAnswer(null);
-      setAnswerStatus("idle");
-      setIsChecked(false);
-      setTypedAnswer("");
-
-      if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
-      else if (next === "word-to-meaning" || next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
-      isProcessingRef.current = false;
-    } else {
-      // Khi đã trả lời ĐÚNG → chuyển sang từ tiếp theo
-      await finishWord(!forgotThisWord);
+    } catch (err) {
+      console.error("Lỗi xử lý kết quả:", err);
+    } finally {
       isProcessingRef.current = false;
     }
   };
@@ -636,11 +641,8 @@ export default function ReviewPage() {
             ) : (
               <button
                 onClick={() => {
-                  if (Date.now() >= canAdvanceRef.current && !isProcessingRef.current) {
-                    handleResult(answerStatus === "correct");
-                  }
+                  handleResult(answerStatus === "correct");
                 }}
-                disabled={isProcessingRef.current}
                 className="btn w-full py-4 rounded-2xl font-bold text-base shadow-lg transition-all active:scale-[0.98]"
                 style={{
                   background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
