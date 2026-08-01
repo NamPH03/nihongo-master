@@ -4,13 +4,13 @@
 // Sổ Tay — Hiển thị TỪ ĐÃ LƯU / ĐÃ HỌC của user theo mức ghi nhớ 1-5
 
 import { useEffect, useState, useCallback } from "react";
-import { doc, getDoc, getDocs, collection } from "firebase/firestore";
+import { getDocs, collection } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { speakJapanese } from "@/lib/speech";
-import { getSRStats } from "@/lib/progress";
+import { getAllVocabulary } from "@/lib/vocabCache";
 import { BookOpen, Volume2, Search, SlidersHorizontal } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -82,8 +82,12 @@ export default function NotebookPage() {
   const loadUserNotebook = useCallback(async (uid: string) => {
     setLoading(true);
     try {
-      // Bước 1: Lấy toàn bộ progress của user
-      const progressSnap = await getDocs(collection(db, "users", uid, "progress"));
+      // Đọc song song: Progress của user + Vocabulary từ client-side cache
+      const [progressSnap, allVocab] = await Promise.all([
+        getDocs(collection(db, "users", uid, "progress")),
+        getAllVocabulary(),
+      ]);
+
       const progressDocs = progressSnap.docs.filter((d) => d.id !== "stats");
 
       if (progressDocs.length === 0) {
@@ -93,42 +97,40 @@ export default function NotebookPage() {
         return;
       }
 
-      // Bước 2: Lấy chi tiết từ vựng song song (batch getDoc)
-      const wordDetails = await Promise.all(
-        progressDocs.map(async (pd) => {
-          const data = pd.data();
-          const wordId = data.wordId || pd.id;
-          try {
-            const vocabSnap = await getDoc(doc(db, "vocabulary", wordId));
-            if (!vocabSnap.exists()) return null;
-            const v = vocabSnap.data();
-            return {
+      // Tạo O(1) Lookup Map từ cache
+      const vocabMap = new Map(allVocab.map((v) => [v.id, v]));
+
+      const wordDetails: NoteWord[] = [];
+      const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+      for (const pd of progressDocs) {
+        const data = pd.data();
+        const wordId = data.wordId || pd.id;
+        const vocab = vocabMap.get(wordId);
+        if (vocab) {
+          const srLv = data.srLevel ?? 0;
+          if (srLv >= 1 && srLv <= 5) {
+            stats[srLv] = (stats[srLv] || 0) + 1;
+          }
+          if (srLv >= 1) {
+            wordDetails.push({
               id: wordId,
-              word: v.word || "",
-              reading: v.reading || "",
-              meaning: v.meaning || "",
-              level: v.level || "N5",
-              type: v.type || "",
-              srLevel: data.srLevel ?? 0,
+              word: vocab.word || "",
+              reading: vocab.reading || "",
+              meaning: vocab.meaning || "",
+              level: vocab.level || "N5",
+              type: vocab.type || "",
+              srLevel: srLv,
               nextReview: data.nextReview || null,
               status: data.status || "new",
-            } as NoteWord;
-          } catch {
-            return null;
+            });
           }
-        })
-      );
+        }
+      }
 
-      // Bước 3: Chỉ giữ từ có srLevel >= 1 (mức 1-5)
-      const validWords = wordDetails.filter(
-        (w): w is NoteWord => w !== null && w.srLevel >= 1
-      );
-      validWords.sort((a, b) => a.srLevel - b.srLevel);
-      setAllWords(validWords);
-      setFiltered(validWords);
-
-      // Bước 4: Cập nhật stats
-      const stats = await getSRStats(uid);
+      wordDetails.sort((a, b) => a.srLevel - b.srLevel);
+      setAllWords(wordDetails);
+      setFiltered(wordDetails);
       setSrStats(stats);
     } catch (e) {
       console.error("Lỗi tải sổ tay:", e);
