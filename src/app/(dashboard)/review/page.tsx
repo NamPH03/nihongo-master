@@ -424,7 +424,7 @@ export default function ReviewPage() {
   );
 
   return (
-    <div className="min-h-[100dvh] bg-page pb-32">
+    <div className="min-h-[100dvh] bg-page pb-44 sm:pb-36">
       {/* ===== HEADER ===== */}
       <div className="max-w-xl mx-auto px-4 pt-6 pb-2 flex items-center gap-4">
         <button
@@ -560,56 +560,59 @@ export default function ReviewPage() {
 
       {/* ===== BOTTOM BAR ===== */}
       <div
-        className="fixed bottom-0 left-0 right-0 py-6 px-4 z-40 transition-all duration-300 border-t"
+        className="fixed bottom-0 left-0 right-0 py-4 px-4 z-40 transition-all duration-300 border-t shadow-2xl"
         style={{
-          background: !isChecked ? "var(--surface)" : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)"),
-          borderColor: !isChecked ? "var(--border-color)" : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)"),
-          backdropFilter: "blur(8px)",
+          background: !isChecked ? "var(--surface)" : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)"),
+          borderColor: !isChecked ? "var(--border-color)" : (answerStatus === "correct" ? "rgba(34, 197, 94, 0.35)" : "rgba(239, 68, 68, 0.35)"),
+          backdropFilter: "blur(12px)",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 16px)",
         }}
       >
-        <div className="max-w-md mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          {/* Kết quả */}
-          <div className="flex-1 flex items-start gap-3">
-            {isChecked && (
-              <>
-                <div className="text-4xl">{answerStatus === "correct" ? "🟢" : "🔴"}</div>
-                <div>
-                  <h4 className="font-bold text-lg" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
-                    {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
-                  </h4>
-                  {answerStatus === "wrong" && (
-                    <p className="text-sm mt-1" style={{ color: "var(--text)" }}>
-                      Đáp án đúng:{" "}
-                      <span className="font-bold font-jp text-lg" style={{ color: "var(--primary)" }}>
-                        {currentStep === "type-reading" ? currentWord.reading
-                          : currentStep === "meaning-to-word" ? currentWord.word
-                          : currentWord.meaning}
-                      </span>
-                    </p>
-                  )}
-                  <div className="text-xs mt-2 space-y-1" style={{ color: "var(--text-muted)" }}>
-                    <div className="font-semibold font-jp text-sm" style={{ color: "var(--text)" }}>
-                      {currentWord.word} ({currentWord.reading})
-                    </div>
-                    <div>Ý nghĩa: {currentWord.meaning}</div>
-                    {currentWord.example && (
-                      <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-color)" }}>
-                        <div className="font-jp text-sm leading-relaxed" style={{ color: "var(--text)" }}>{currentWord.example}</div>
-                        {currentWord.exampleMeaning && (
-                          <div className="text-xs mt-0.5 italic" style={{ color: "var(--text-muted)" }}>{currentWord.exampleMeaning}</div>
-                        )}
-                      </div>
-                    )}
+        <div className="max-w-md mx-auto flex flex-col gap-3">
+          {/* Kết quả + Giải thích chi tiết khi đã trả lời */}
+          {isChecked && (
+            <div className="flex items-start gap-3 w-full animate-fade-in">
+              <div className="text-3xl flex-shrink-0">{answerStatus === "correct" ? "🟢" : "🔴"}</div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-base leading-tight" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                  {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
+                </h4>
+                {answerStatus === "wrong" && (
+                  <p className="text-xs font-semibold mt-1" style={{ color: "var(--text)" }}>
+                    Đáp án đúng:{" "}
+                    <span className="font-bold font-jp text-base" style={{ color: "var(--primary)" }}>
+                      {currentStep === "type-reading" ? currentWord.reading
+                        : currentStep === "meaning-to-word" ? currentWord.word
+                        : currentWord.meaning}
+                    </span>
+                  </p>
+                )}
+                <div className="text-xs mt-1.5 space-y-0.5" style={{ color: "var(--text-muted)" }}>
+                  <div className="font-semibold font-jp text-sm" style={{ color: "var(--text)" }}>
+                    {currentWord.word} {currentWord.reading !== currentWord.word ? `(${currentWord.reading})` : ""}
                   </div>
+                  <div>Nghĩa: {currentWord.meaning}</div>
+                  {currentWord.example && (
+                    <div className="mt-1.5 pt-1.5 border-t text-[11px]" style={{ borderColor: "var(--border-color)" }}>
+                      <div className="font-jp leading-relaxed" style={{ color: "var(--text)" }}>{currentWord.example}</div>
+                      {currentWord.exampleMeaning && (
+                        <div className="italic text-[10px]" style={{ color: "var(--text-muted)" }}>{currentWord.exampleMeaning}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </>
-            )}
+              </div>
+            </div>
+          )}
+
+          {/* Cụm Nút bấm hành động xếp DỌC (Flex Column) chuẩn Mobile */}
+          <div className="flex flex-col gap-2 w-full">
             {!isChecked ? (
               <>
                 <button
                   onClick={handleCheckAnswer}
                   disabled={currentStep === "type-reading" ? !typedAnswer.trim() : !selectedChoice}
-                  className="btn w-full sm:w-auto px-10 py-4 rounded-2xl font-bold transition-all"
+                  className="btn w-full py-4 rounded-2xl font-bold text-base shadow-lg transition-all active:scale-[0.98]"
                   style={{
                     background: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "var(--primary)" : "var(--surface-3)",
                     color: (currentStep === "type-reading" ? typedAnswer.trim() : selectedChoice) ? "#0d1f14" : "var(--text-faint)",
@@ -624,7 +627,7 @@ export default function ReviewPage() {
                     setAnswerStatus("wrong");
                     setIsChecked(true);
                   }}
-                  className="text-xs font-semibold underline py-1 transition-colors hover:text-red-500"
+                  className="w-full py-2 text-xs font-semibold text-center transition-colors hover:text-red-500 active:opacity-70"
                   style={{ color: "var(--text-muted)" }}
                 >
                   Tôi không nhớ từ này
@@ -638,10 +641,13 @@ export default function ReviewPage() {
                   }
                 }}
                 disabled={isProcessingRef.current}
-                className="btn w-full sm:w-auto px-12 py-4 rounded-2xl font-bold transition-all"
-                style={{ background: answerStatus === "correct" ? "var(--primary)" : "#ef4444", color: answerStatus === "correct" ? "#0d1f14" : "#fff" }}
+                className="btn w-full py-4 rounded-2xl font-bold text-base shadow-lg transition-all active:scale-[0.98]"
+                style={{
+                  background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
+                  color: answerStatus === "correct" ? "#0d1f14" : "#fff",
+                }}
               >
-                Tiếp tục
+                Tiếp tục ➔
               </button>
             )}
           </div>
