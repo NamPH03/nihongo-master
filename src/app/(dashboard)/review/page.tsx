@@ -394,6 +394,8 @@ export default function ReviewPage() {
     setSelectedChoice(choice);
   };
 
+  const canAdvanceRef = useRef<number>(0);
+
   // ─── Kiểm tra đáp án ───
   const handleCheckAnswer = () => {
     if (isChecked) return;
@@ -402,6 +404,7 @@ export default function ReviewPage() {
       const isRight = typedAnswer.trim() === correct;
       setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
+      canAdvanceRef.current = Date.now() + 350; // Khóa phím Enter 350ms chống double tap
       if (isRight) sfx.playCorrect();
       else sfx.playWrong();
     } else {
@@ -413,6 +416,7 @@ export default function ReviewPage() {
       setSelectedAnswer(selectedChoice);
       setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
+      canAdvanceRef.current = Date.now() + 350; // Khóa phím Enter 350ms chống double tap
       if (isRight) sfx.playCorrect();
       else sfx.playWrong();
     }
@@ -433,7 +437,10 @@ export default function ReviewPage() {
         if (!isChecked) {
           if (currentStep !== "write-kanji" && selectedChoice) handleCheckAnswer();
         } else {
-          handleResult(answerStatus === "correct");
+          // Chỉ cho phép chuyển từ nếu đã trôi qua ít nhất 350ms sau khi bấm Kiểm tra
+          if (Date.now() >= canAdvanceRef.current) {
+            handleResult(answerStatus === "correct");
+          }
         }
         return;
       }
@@ -515,7 +522,7 @@ export default function ReviewPage() {
     </div>
   );
 
-  const progressPct = dueWords.length > 0 ? (doneCount / dueWords.length) * 100 : 0;
+  const progressPct = dueWords.length > 0 ? Math.min(100, Math.round(((currentIndex + 1) / dueWords.length) * 100)) : 0;
 
   // ===== SCREENS =====
   if (loading) return (
@@ -652,7 +659,9 @@ export default function ReviewPage() {
                   if (!isChecked) {
                     if (typedAnswer.trim()) handleCheckAnswer();
                   } else {
-                    handleResult(answerStatus === "correct");
+                    if (Date.now() >= canAdvanceRef.current) {
+                      handleResult(answerStatus === "correct");
+                    }
                   }
                 }
               }}
