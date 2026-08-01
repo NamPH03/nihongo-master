@@ -263,8 +263,13 @@ export default function ReviewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allWords]);
 
+  // Chỉ initWord[0] một lần duy nhất khi mới load xong dữ liệu
+  const isInitializedRef = useRef(false);
   useEffect(() => {
-    if (dueWords.length > 0 && allWords.length > 0) initWord(dueWords[0], []);
+    if (!isInitializedRef.current && dueWords.length > 0 && allWords.length > 0) {
+      isInitializedRef.current = true;
+      initWord(dueWords[0], []);
+    }
   }, [dueWords, allWords, initWord]);
 
   const currentWord = dueWords[currentIndex];
@@ -418,9 +423,8 @@ export default function ReviewPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (loading || finished || dueWords.length === 0) return;
 
-      // Không intercept Enter khi đang focus vào input (type-reading)
-      if (e.key === "Enter" && currentStep === "type-reading") {
-        // input tự submit qua onKeyDown của nó
+      // Khi type-reading chưa check, để ô input tự bắt Enter qua onKeyDown của nó
+      if (e.key === "Enter" && currentStep === "type-reading" && !isChecked) {
         return;
       }
 
