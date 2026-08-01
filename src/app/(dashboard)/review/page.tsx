@@ -34,21 +34,19 @@ function hasJapanese(str: string): boolean {
   return /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf\u3400-\u4dbf]/.test(str);
 }
 
-function hasKanji(str: string): boolean {
-  return /[\u4e00-\u9faf\u3400-\u4dbf]/.test(str);
-}
-
 function getKanjiChars(str: string): string[] {
-  return str.split("").filter((c) => /[\u4e00-\u9faf\u3400-\u4dbf]/.test(c));
+  return (str || "").split("").filter((c) => /[\u4e00-\u9faf\u3400-\u4dbf]/.test(c));
 }
 
 /** Tạo danh sách bước ôn phù hợp cho từng từ */
 function getStepsForWord(word: ReviewWord): ReviewStep[] {
   const steps: ReviewStep[] = [...BASE_STEPS];
-  // Chỉ thêm type-reading nếu từ có chứa Kanji
-  if (hasKanji(word.word)) steps.push("type-reading");
-  // Chỉ thêm write-kanji nếu từ có Kanji
-  if (hasKanji(word.word)) steps.push("write-kanji");
+  // Chỉ thêm type-reading và write-kanji nếu từ THỰC SỰ có chứa Kanji
+  const kanjiCount = getKanjiChars(word.word || "").length;
+  if (kanjiCount > 0) {
+    steps.push("type-reading");
+    steps.push("write-kanji");
+  }
   return steps;
 }
 
@@ -56,18 +54,22 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function cleanStr(s: string): string {
+  return (s || "").replace(/\s*[\(（].*?[\)）]/g, "").trim();
+}
+
 function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "word" | "meaning"): string[] {
-  const correctValue = type === "word" ? correct.word : correct.meaning;
+  const correctValue = type === "word" ? cleanStr(correct.word) : correct.meaning.trim();
 
   // Pool: lọc bỏ chính từ hiện tại và các giá trị trùng với đáp án đúng
   const pool = allWords
     .filter((w) => {
-      if (w.word === correct.word && w.meaning === correct.meaning) return false;
+      const wVal = type === "word" ? cleanStr(w.word) : w.meaning.trim();
+      if (wVal === correctValue) return false;
       if (type === "meaning" && hasJapanese(w.meaning)) return false;
-      const val = type === "word" ? w.word : w.meaning;
-      return val && val.trim() !== "" && val !== correctValue;
+      return wVal.length > 0;
     })
-    .map((w) => (type === "word" ? w.word : w.meaning))
+    .map((w) => (type === "word" ? cleanStr(w.word) : w.meaning.trim()))
     .filter((v, i, arr) => arr.indexOf(v) === i); // dedup
 
   // Xào trộn pool và lấy 3 lựa chọn sai
@@ -79,10 +81,10 @@ function generateChoices(correct: ReviewWord, allWords: Vocabulary[], type: "wor
 
   // Nếu không đủ 4 (pool quá nhỏ), pad bằng các giá trị dummy
   while (allChoices.length < 4) {
-    allChoices.push(`― (không có)`);
+    allChoices.push(`― (khác)`);
   }
 
-  // Xào trộn vị trí các đáp án (đảm bảo correctValue ở vị trí ngẫu nhiên)
+  // Xào trộn vị trí các đáp án
   return allChoices.sort(() => Math.random() - 0.5);
 }
 
@@ -400,8 +402,8 @@ export default function ReviewPage() {
     } else {
       if (!selectedChoice) return;
       let correct = "";
-      if (currentStep === "meaning-to-word") correct = currentWord.word;
-      else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
+      if (currentStep === "meaning-to-word") correct = cleanStr(currentWord.word);
+      else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning.trim();
       const isRight = selectedChoice === correct;
       setSelectedAnswer(selectedChoice);
       setAnswerStatus(isRight ? "correct" : "wrong");
@@ -464,8 +466,8 @@ export default function ReviewPage() {
   // ─── Choice styles ───
   const getChoiceStyle = (choice: string): React.CSSProperties => {
     let correct = "";
-    if (currentStep === "meaning-to-word") correct = currentWord.word;
-    else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning;
+    if (currentStep === "meaning-to-word") correct = cleanStr(currentWord.word);
+    else if (currentStep === "word-to-meaning" || currentStep === "listening") correct = currentWord.meaning.trim();
     if (!isChecked) {
       if (choice === selectedChoice) return { borderColor: "var(--primary)", boxShadow: "0 0 0 1px var(--primary)", background: "var(--primary-glow)" };
       return {};
@@ -640,6 +642,16 @@ export default function ReviewPage() {
               type="text"
               value={typedAnswer}
               onChange={(e) => { if (!isChecked) { setTypedAnswer(e.target.value); setAnswerStatus("idle"); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (!isChecked) {
+                    if (typedAnswer.trim()) handleCheckAnswer();
+                  } else {
+                    handleResult(answerStatus === "correct");
+                  }
+                }
+              }}
               placeholder="Ví dụ: たべる"
               disabled={isChecked}
               className="input text-center text-xl font-jp mb-4"
