@@ -374,10 +374,7 @@ export default function StudySession({
     );
   }
 
-  // Tính phần trăm tiến độ tổng quan buổi học
-  const overallProgressPct = sessionWords.length > 0 
-    ? Math.round((currentIndex / sessionWords.length) * 100) 
-    : 0;
+
 
   return (
     <div className="pb-24">
@@ -392,11 +389,11 @@ export default function StudySession({
         </button>
 
         {/* Thanh tiến độ */}
-        <div className="flex-1 h-4 rounded-full" style={{ background: "var(--surface-3)" }}>
+        <div className="flex-1 h-4 rounded-full overflow-hidden" style={{ background: "var(--surface-3)" }}>
           <div
             className="h-4 rounded-full transition-all duration-700 ease-spring"
             style={{ 
-              width: `${overallProgressPct || 5}%`, 
+              width: `${currentStep === "result" ? 100 : Math.min(100, Math.max(8, Math.round(((currentIndex + 1) / sessionWords.length) * 100)))}%`, 
               background: "linear-gradient(90deg, var(--primary), #4ade80)" 
             }}
           />
@@ -404,7 +401,7 @@ export default function StudySession({
 
         {/* Số câu */}
         <span className="text-sm font-bold tabular" style={{ color: "var(--text-muted)" }}>
-          {currentIndex + 1}/{sessionWords.length}
+          {currentStep === "result" ? sessionWords.length : currentIndex + 1}/{sessionWords.length}
         </span>
       </div>
 
@@ -702,28 +699,36 @@ export default function StudySession({
             </div>
           )}
 
-          {answerStatus === "wrong" && (
-            <div className="p-5 rounded-3xl border flex flex-col gap-3 bg-red-500/5" style={{ borderColor: "rgba(239,68,68,0.25)" }}>
-              <div className="text-sm font-bold text-red-600">❌ Viết chưa chính xác! Cách viết đúng là:</div>
-              <div className="grid grid-cols-2 gap-4 justify-items-center pt-2">
+          {answerStatus !== "idle" && (
+            <div className="p-5 rounded-3xl border flex flex-col gap-3"
+              style={{
+                backgroundColor: answerStatus === "correct" ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
+                borderColor: answerStatus === "correct" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-bold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                  {answerStatus === "correct" ? "🎉 Chuẩn xác! Thứ tự nét vẽ Kanji chuẩn:" : "❌ Cách viết nét chuẩn của từ này:"}
+                </div>
+              </div>
+
+              {/* Nét vẽ Kanji SVG to rõ */}
+              <div className="flex flex-wrap justify-center gap-4 pt-2">
                 {kanjisInWord.map((kanji) => (
-                  <div key={kanji} className="flex flex-col items-center rounded-3xl p-3 border shadow-sm" style={{ backgroundColor: "#ffffff", borderColor: "var(--border-color)" }}>
+                  <div key={kanji} className="flex flex-col items-center rounded-2xl p-4 border shadow-md transition-all hover:scale-105" style={{ backgroundColor: "#ffffff", borderColor: "var(--border-color)" }}>
                     <KanjiStrokeImage
                       char={kanji}
-                      width={96}
-                      height={96}
-                      className="w-24 h-24"
+                      width={120}
+                      height={120}
+                      className="w-30 h-30"
                     />
-                    <span className="font-jp text-lg font-bold mt-2" style={{ color: "#000000" }}>{kanji}</span>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="font-jp text-2xl font-bold" style={{ color: "#000000" }}>{kanji}</span>
+                      <SpeakButton text={kanji} size="sm" />
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {answerStatus === "correct" && (
-            <div className="p-3 rounded-xl text-center text-sm font-semibold" style={{ background: "rgba(34,197,94,0.1)", color: "var(--primary)" }}>
-              🎉 Chính xác! Bạn viết rất tốt!
             </div>
           )}
 
@@ -751,33 +756,75 @@ export default function StudySession({
       )}
 
       {currentStep === "result" && (
-        <div className="card p-12 text-center animate-scale-in rounded-3xl">
-          <div className="text-6xl mb-4">🎉</div>
-          <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--text)" }}>
+        <div className="card p-8 sm:p-12 text-center animate-scale-in rounded-3xl max-w-lg mx-auto border shadow-xl" style={{ borderColor: "var(--border-color)" }}>
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-[var(--primary-glow)] flex items-center justify-center text-4xl animate-bounce">
+            🎉
+          </div>
+          <h2 className="text-2xl font-bold mb-1" style={{ color: "var(--text)" }}>
             Hoàn thành buổi học!
           </h2>
-          <p className="mb-3" style={{ color: "var(--text-muted)" }}>
-            Bạn vừa học được{" "}
+          <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>
+            Bạn vừa ghi nhớ thành công{" "}
             <span className="font-bold" style={{ color: "var(--primary)" }}>{learnedCount} từ mới</span>
           </p>
-          {/* Tiến độ tổng bài */}
-          <div className="rounded-2xl p-4 mb-8" style={{ background: "var(--surface-2)" }}>
-            <div className="text-sm mb-2" style={{ color: "var(--text-muted)" }}>Tiến độ bài học</div>
-            <div className="text-2xl font-bold mb-1" style={{ color: "var(--primary)" }}>
+
+          {/* Tiến độ tổng bài học */}
+          <div className="rounded-2xl p-5 mb-8 text-left border" style={{ background: "var(--surface-2)", borderColor: "var(--border-color)" }}>
+            <div className="flex justify-between items-center text-sm mb-2">
+              <span style={{ color: "var(--text-muted)" }}>Tiến độ bài học</span>
+              <span className="font-bold text-green-500">100%</span>
+            </div>
+            <div className="text-2xl font-bold mb-2" style={{ color: "var(--primary)" }}>
               {alreadyLearnedCount + learnedCount} / {total} từ
             </div>
-            <div className="w-full h-2 rounded-full overflow-hidden mt-2" style={{ background: "var(--surface-3)" }}>
+            <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "var(--surface-3)" }}>
               <div
-                className="h-2 rounded-full transition-all duration-700"
+                className="h-3 rounded-full transition-all duration-700"
                 style={{
-                  width: `${Math.min(100, Math.round(((alreadyLearnedCount + learnedCount) / total) * 100))}%`,
-                  background: "var(--primary)"
+                  width: "100%",
+                  background: "linear-gradient(90deg, var(--primary), #4ade80)"
                 }}
               />
             </div>
-            {alreadyLearnedCount + learnedCount >= total && (
-              <p className="text-xs mt-2 font-semibold" style={{ color: "var(--primary)" }}>✅ Hoàn thành 100% bài học!</p>
-            )}
+            <p className="text-xs mt-2.5 font-semibold text-center text-green-500">
+              ✅ Đã thuộc toàn bộ từ vựng bài học này!
+            </p>
+          </div>
+
+          {/* Các nút điều hướng rõ ràng */}
+          <div className="flex flex-col gap-3">
+            <Link
+              href={`/learn/${encodeURIComponent(courseId)}`}
+              className="btn btn-primary w-full py-4 rounded-2xl text-base font-bold flex items-center justify-center gap-2 shadow-lg hover:scale-[1.02] active:scale-98 transition-transform"
+            >
+              🚀 Tiếp tục học bài khác ➔
+            </Link>
+
+            <Link
+              href="/review"
+              className="btn w-full py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 border transition-all hover:bg-[var(--surface-2)]"
+              style={{ background: "var(--surface)", color: "var(--text)", borderColor: "var(--border-color)" }}
+            >
+              ⚡ Ôn tập ngay (SRS Spaced Repetition)
+            </Link>
+
+            <div className="flex gap-3 mt-1">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 py-3 rounded-2xl text-xs font-semibold border text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                style={{ borderColor: "var(--border-color)" }}
+              >
+                🔄 Học lại bài này
+              </button>
+
+              <Link
+                href="/dashboard"
+                className="flex-1 py-3 rounded-2xl text-xs font-semibold border text-[var(--text-muted)] hover:text-[var(--text)] transition-colors flex items-center justify-center"
+                style={{ borderColor: "var(--border-color)" }}
+              >
+                🏠 Trang chủ
+              </Link>
+            </div>
           </div>
         </div>
       )}
