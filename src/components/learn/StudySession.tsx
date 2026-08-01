@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { auth } from "@/lib/firebase";
 import { markNewWordLearned, updateProgress } from "@/lib/progress";
 import { speakJapanese } from "@/lib/speech";
@@ -71,7 +71,7 @@ function KanjiStrokeImage({ char, className, width, height }: { char: string; cl
   return (
     <div
       className={`${className} flex items-center justify-center`}
-      style={{ width, height, color: "var(--text)" }}
+      style={{ width, height, color: "#000000" }}
       dangerouslySetInnerHTML={{ __html: svgContent }}
     />
   );
@@ -126,14 +126,17 @@ export default function StudySession({
   const [currentStep, setCurrentStep] = useState<Step>("flashcard");
   const [isFlipped, setIsFlipped] = useState(false);
   const [choices, setChoices] = useState<string[]>([]);
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [answerStatus, setAnswerStatus] = useState<"idle" | "correct" | "wrong">("idle");
+  const [isChecked, setIsChecked] = useState(false);
   const [learnedCount, setLearnedCount] = useState(0);
   const [recognizedCandidates, setRecognizedCandidates] = useState<string[]>([]);
   const [showKanjiHint, setShowKanjiHint] = useState<string | null>(null);
   const [showFurigana, setShowFurigana] = useState(true);
   const [loading, setLoading] = useState(true);
   const [showExitModal, setShowExitModal] = useState(false);
+  const canAdvanceRef = useRef<number>(0);
 
   useEffect(() => {
     if (words.length === 0) return;
@@ -172,8 +175,10 @@ export default function StudySession({
       } else if (step === "listening") {
         setChoices(generateChoices(word, sessionWords, "meaning"));
       }
+      setSelectedChoice(null);
       setSelectedAnswer(null);
       setAnswerStatus("idle");
+      setIsChecked(false);
       setRecognizedCandidates([]);
       setShowKanjiHint(null);
     },
@@ -231,38 +236,30 @@ export default function StudySession({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (loading || currentIndex >= sessionWords.length) return;
 
-      // Nhấn Enter
       if (e.key === "Enter") {
-        if (currentStep === "flashcard") {
-          // Bấm Enter ở flashcard thì lật thẻ, hoặc bấm nút Tiếp tục dưới
-          if (!isFlipped) setIsFlipped(true);
-          else nextStep();
-        } else if (currentStep === "meaning-to-word" || currentStep === "listening") {
-          if (answerStatus !== "idle") {
-            nextStep();
+        e.preventDefault();
+        if (!isChecked) {
+          if ((currentStep === "meaning-to-word" || currentStep === "listening") && selectedChoice) {
+            handleCheckAnswer();
           }
-        } else if (currentStep === "kanji") {
-          nextStep();
-        } else if (currentStep === "write-kanji") {
-          if (answerStatus !== "idle") {
+        } else {
+          if (Date.now() >= canAdvanceRef.current) {
             nextStep();
-          } else {
-            if (recognizedCandidates.length > 0) checkDrawingKanji();
           }
         }
         return;
       }
 
-      // Nhấn phím 1, 2, 3, 4 ở các step trắc nghiệm
       if (
         !loading &&
-        answerStatus === "idle" &&
+        !isChecked &&
         ["1", "2", "3", "4"].includes(e.key) &&
         (currentStep === "meaning-to-word" || currentStep === "listening")
       ) {
+        e.preventDefault();
         const idx = parseInt(e.key) - 1;
         if (choices[idx]) {
-          handleChoice(choices[idx]);
+          handleSelectChoice(choices[idx]);
         }
       }
     };
@@ -270,19 +267,25 @@ export default function StudySession({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, currentIndex, sessionWords, currentStep, isFlipped, answerStatus, choices, recognizedCandidates]);
+  }, [loading, currentIndex, sessionWords, currentStep, isFlipped, isChecked, selectedChoice, choices]);
 
   const handleSkipWord = async () => {
     await goNextWord();
   };
 
-  const handleChoice = (choice: string) => {
-    if (answerStatus !== "idle") return;
-    setSelectedAnswer(choice);
-    const correct =
-      currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
-    const isRight = choice === correct;
+  const handleSelectChoice = (choice: string) => {
+    if (isChecked) return;
+    setSelectedChoice(choice);
+  };
+
+  const handleCheckAnswer = () => {
+    if (isChecked || !selectedChoice || !currentWord) return;
+    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
+    const isRight = selectedChoice === correct;
+    setSelectedAnswer(selectedChoice);
     setAnswerStatus(isRight ? "correct" : "wrong");
+    setIsChecked(true);
+    canAdvanceRef.current = Date.now() + 350;
     if (isRight) sfx.playCorrect();
     else sfx.playWrong();
   };
@@ -301,11 +304,13 @@ export default function StudySession({
 
   const getChoiceStyle = (choice: string): React.CSSProperties => {
     if (!currentWord) return {};
-    const correct =
-      currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
-    if (answerStatus === "idle") return {};
-    if (choice === correct) return { background: "var(--primary)", color: "#0d1f14", borderColor: "var(--primary)" };
-    if (choice === selectedAnswer) return { background: "#ef4444", color: "#fff", borderColor: "#ef4444" };
+    const correct = currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning;
+    if (!isChecked) {
+      if (choice === selectedChoice) return { borderColor: "var(--primary)", boxShadow: "0 0 0 1px var(--primary)", background: "var(--primary-glow)" };
+      return {};
+    }
+    if (choice === correct) return { background: "rgba(34, 197, 94, 0.15)", color: "var(--text)", borderColor: "var(--primary)" };
+    if (choice === selectedAnswer && choice !== correct) return { background: "rgba(239, 68, 68, 0.15)", color: "var(--text)", borderColor: "#ef4444" };
     return { opacity: 0.35 };
   };
 
@@ -500,7 +505,7 @@ export default function StudySession({
               return (
                 <button
                   key={index}
-                  onClick={() => handleChoice(choice)}
+                  onClick={() => handleSelectChoice(choice)}
                   className="w-full py-4 px-5 rounded-2xl text-left flex flex-col gap-2 transition-all duration-200"
                   style={{
                     background: "var(--surface-2)",
@@ -510,12 +515,12 @@ export default function StudySession({
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
+                    <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: choice === selectedChoice && !isChecked ? "var(--primary)" : "var(--surface-3)", color: choice === selectedChoice && !isChecked ? "#0d1f14" : "var(--text-muted)" }}>
                       {index + 1}
                     </span>
                     <div className="flex flex-col items-start gap-1">
-                      {showFurigana && choiceWord?.reading && (
-                        <span className="text-xs text-[var(--text-muted)]">{choiceWord.reading}</span>
+                      {showFurigana && choiceWord?.reading && choiceWord.word !== choiceWord.reading && (
+                        <span className="text-xs text-[var(--primary)] font-jp">{choiceWord.reading}</span>
                       )}
                       <span className="font-jp text-lg font-medium">{choice}</span>
                     </div>
@@ -524,18 +529,6 @@ export default function StudySession({
               );
             })}
           </div>
-          {answerStatus !== "idle" && (
-            <div className="mt-4 p-3 rounded-xl" style={{ background: answerStatus === "correct" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)", borderLeft: `3px solid ${answerStatus === "correct" ? "var(--primary)" : "#ef4444"}` }}>
-              <div className="text-xs font-semibold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
-                {answerStatus === "correct" ? "✅ Chính xác!" : "❌ Chưa đúng"}
-              </div>
-              {answerStatus === "wrong" && (
-                <div className="text-sm mt-1" style={{ color: "var(--text)" }}>
-                  Đáp án: <span className="font-bold font-jp" style={{ color: "var(--primary)" }}>{currentWord.word}</span>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -557,7 +550,7 @@ export default function StudySession({
             {choices.map((choice, index) => (
               <button
                 key={index}
-                onClick={() => handleChoice(choice)}
+                onClick={() => handleSelectChoice(choice)}
                 className="w-full py-4 px-5 rounded-2xl text-left flex items-center gap-3 transition-all duration-200"
                 style={{
                   background: "var(--surface-2)",
@@ -566,25 +559,13 @@ export default function StudySession({
                   ...getChoiceStyle(choice),
                 }}
               >
-                <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: "var(--surface-3)", color: "var(--text-muted)" }}>
+                <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: choice === selectedChoice && !isChecked ? "var(--primary)" : "var(--surface-3)", color: choice === selectedChoice && !isChecked ? "#0d1f14" : "var(--text-muted)" }}>
                   {index + 1}
                 </span>
                 <span>{choice}</span>
               </button>
             ))}
           </div>
-          {answerStatus !== "idle" && (
-            <div className="mt-4 p-3 rounded-xl" style={{ background: answerStatus === "correct" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.06)", borderLeft: `3px solid ${answerStatus === "correct" ? "var(--primary)" : "#ef4444"}` }}>
-              <div className="text-xs font-semibold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
-                {answerStatus === "correct" ? "✅ Chính xác!" : "❌ Chưa đúng"}
-              </div>
-              {answerStatus === "wrong" && (
-                <div className="text-sm mt-1" style={{ color: "var(--text)" }}>
-                  Đáp án: <span className="font-bold font-jp" style={{ color: "var(--primary)" }}>{currentWord.meaning}</span>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -631,7 +612,7 @@ export default function StudySession({
                 />
               </div>
             ) : (
-              <div className="text-xs text-[var(--text-muted)]">Chọn một chữ trên bên trên để xem hướng nét vẽ.</div>
+              <div className="text-xs text-[var(--text-muted)]">Chọn một chữ bên trên để xem hướng nét vẽ.</div>
             )}
           </div>
           {showKanjiHint && (
@@ -677,7 +658,9 @@ export default function StudySession({
 
           <div className="relative">
             <HandwritingCanvas
-              onSelectWord={(char) => setRecognizedCandidates((prev) => Array.from(new Set([...prev, char])))}
+              onSelectWord={(char) => {
+                setRecognizedCandidates((prev) => Array.from(new Set([...prev, char])));
+              }}
               onClose={() => {}}
               strokeGuideChar={kanjisInWord[recognizedCandidates.length]}
             />
@@ -782,59 +765,75 @@ export default function StudySession({
       )}
 
       {/* ===== BOTTOM BAR (Trắc nghiệm) ===== */}
-      {answerStatus !== "idle" && (currentStep === "meaning-to-word" || currentStep === "listening") && (
+      {(currentStep === "meaning-to-word" || currentStep === "listening") && (selectedChoice || isChecked) && (
         <div
           className="fixed bottom-0 left-0 right-0 py-5 px-4 z-40 border-t transition-all duration-300"
           style={{
-            background: answerStatus === "correct" ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-            borderColor: answerStatus === "correct" ? "rgba(34, 197, 94, 0.3)" : "rgba(239, 68, 68, 0.3)",
+            background: !isChecked
+              ? "var(--surface)"
+              : answerStatus === "correct"
+              ? "rgba(34, 197, 94, 0.15)"
+              : "rgba(239, 68, 68, 0.15)",
+            borderColor: !isChecked
+              ? "var(--border-strong)"
+              : answerStatus === "correct"
+              ? "rgba(34, 197, 94, 0.3)"
+              : "rgba(239, 68, 68, 0.3)",
             backdropFilter: "blur(10px)",
           }}
         >
           <div className="max-w-md mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             {/* Kết quả + thông tin từ */}
-            <div className="flex-1 flex items-start gap-3">
-              <div className="text-3xl">{answerStatus === "correct" ? "🟢" : "🔴"}</div>
-              <div>
-                <h4 className="font-bold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
-                  {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
-                </h4>
-                {answerStatus === "wrong" && (
-                  <p className="text-sm mt-0.5" style={{ color: "var(--text)" }}>
-                    Đáp án đúng:{" "}
-                    <span className="font-bold font-jp text-base" style={{ color: "var(--primary)" }}>
-                      {currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning}
-                    </span>
-                  </p>
-                )}
-                <div className="text-xs mt-1 space-y-0.5" style={{ color: "var(--text-muted)" }}>
-                  <div className="font-semibold font-jp" style={{ color: "var(--text)" }}>
-                    {currentWord.word} ({currentWord.reading})
-                  </div>
-                  <div>Ý nghĩa: {currentWord.meaning}</div>
-                  {currentWord.example && (
-                    <div className="mt-1 pt-1 border-t" style={{ borderColor: "var(--border-color)" }}>
-                      <div className="font-jp leading-relaxed">{currentWord.example}</div>
-                      {currentWord.exampleMeaning && (
-                        <div className="italic">{currentWord.exampleMeaning}</div>
-                      )}
-                    </div>
+            {isChecked ? (
+              <div className="flex-1 flex items-start gap-3">
+                <div className="text-3xl">{answerStatus === "correct" ? "🟢" : "🔴"}</div>
+                <div>
+                  <h4 className="font-bold" style={{ color: answerStatus === "correct" ? "var(--primary)" : "#ef4444" }}>
+                    {answerStatus === "correct" ? "Chính xác! Cố gắng lắm!" : "Chưa chính xác rồi!"}
+                  </h4>
+                  {answerStatus === "wrong" && (
+                    <p className="text-sm mt-0.5" style={{ color: "var(--text)" }}>
+                      Đáp án đúng:{" "}
+                      <span className="font-bold font-jp text-base" style={{ color: "var(--primary)" }}>
+                        {currentStep === "meaning-to-word" ? currentWord.word : currentWord.meaning}
+                      </span>
+                    </p>
                   )}
+                  <div className="text-xs mt-1 space-y-0.5" style={{ color: "var(--text-muted)" }}>
+                    <div className="font-semibold font-jp" style={{ color: "var(--text)" }}>
+                      {currentWord.word} ({currentWord.reading})
+                    </div>
+                    <div>Ý nghĩa: {currentWord.meaning}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            {/* Nút Tiếp tục */}
+            ) : (
+              <div className="flex-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                Đã chọn đáp án. Bấm <span className="font-bold text-[var(--primary)]">Kiểm tra</span> hoặc nhấn <kbd className="px-1.5 py-0.5 rounded bg-[var(--surface-3)] font-mono text-[10px]">Enter</kbd> để xem kết quả.
+              </div>
+            )}
+
+            {/* Nút Kiểm tra / Tiếp tục */}
             <div className="flex-shrink-0">
-              <button
-                onClick={nextStep}
-                className="btn w-full sm:w-auto px-10 py-3.5 rounded-2xl font-bold"
-                style={{
-                  background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
-                  color: answerStatus === "correct" ? "#0d1f14" : "#fff",
-                }}
-              >
-                Tiếp tục
-              </button>
+              {!isChecked ? (
+                <button
+                  onClick={handleCheckAnswer}
+                  className="btn btn-primary w-full sm:w-auto px-10 py-3.5 rounded-2xl font-bold"
+                >
+                  Kiểm tra
+                </button>
+              ) : (
+                <button
+                  onClick={nextStep}
+                  className="btn w-full sm:w-auto px-10 py-3.5 rounded-2xl font-bold"
+                  style={{
+                    background: answerStatus === "correct" ? "var(--primary)" : "#ef4444",
+                    color: answerStatus === "correct" ? "#0d1f14" : "#fff",
+                  }}
+                >
+                  Tiếp tục
+                </button>
+              )}
             </div>
           </div>
         </div>
