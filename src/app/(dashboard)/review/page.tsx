@@ -133,7 +133,7 @@ export default function ReviewPage() {
 
       try {
         // getDueWordsWithVocab đọc vocabulary 1 lần (cache) + progress song song
-        const { dueWords: dueProgress, allVocab } = await getDueWordsWithVocab(user.uid, 20);
+        const { dueWords: dueProgress, allVocab } = await getDueWordsWithVocab(user.uid, 50);
 
         // Build vocabulary map O(1) lookup
         const vocabMap = new Map(allVocab.map((v) => [v.id, v]));
@@ -267,14 +267,21 @@ export default function ReviewPage() {
 
   const currentWord = dueWords[currentIndex];
 
-  // Tự động phát âm ở bước listening
+  // Tự động phát âm:
+  // - Khi bước là "listening" (trước khi check)
+  // - Khi vừa check xong (isChecked = true) → phát âm để người học nghe lại từ đúng
   useEffect(() => {
-    if (currentStep === "listening" && currentWord && !isChecked) {
+    if (!currentWord) return;
+    if (currentStep === "listening" && !isChecked) {
       const t = setTimeout(() => speakJapanese(currentWord.word, false), 300);
       return () => clearTimeout(t);
     }
+    if (isChecked) {
+      const t = setTimeout(() => speakJapanese(currentWord.word, false), 200);
+      return () => clearTimeout(t);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, currentWord?.wordId]);
+  }, [currentStep, currentWord?.wordId, isChecked]);
 
   const kanjiChars = currentWord ? getKanjiChars(currentWord.word) : [];
 
@@ -404,32 +411,36 @@ export default function ReviewPage() {
     }
   };
 
-  // ─── Phím tắt (stable handler dùng ref, đăng ký 1 lần) ───
-  const keyStateRef = useRef({ loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus });
-  keyStateRef.current = { loading, finished, dueWords, isChecked, selectedChoice, typedAnswer, currentStep, choices, answerStatus };
-
+  // ─── Phím tắt (re-register khi state thay đổi để không bị stale closure) ───
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const s = keyStateRef.current;
-      if (s.loading || s.finished || s.dueWords.length === 0) return;
+      if (loading || finished || dueWords.length === 0) return;
+
+      // Không intercept Enter khi đang focus vào input (type-reading)
+      if (e.key === "Enter" && currentStep === "type-reading") {
+        // input tự submit qua onKeyDown của nó
+        return;
+      }
+
       if (e.key === "Enter") {
-        if (!s.isChecked) {
-          if (s.currentStep === "type-reading") { if (s.typedAnswer.trim()) handleCheckAnswer(); }
-          else if (s.currentStep !== "write-kanji") { if (s.selectedChoice) handleCheckAnswer(); }
+        e.preventDefault();
+        if (!isChecked) {
+          if (currentStep !== "write-kanji" && selectedChoice) handleCheckAnswer();
         } else {
-          handleResult(s.answerStatus === "correct");
+          handleResult(answerStatus === "correct");
         }
         return;
       }
-      if (s.currentStep !== "type-reading" && s.currentStep !== "write-kanji" && !s.isChecked && ["1","2","3","4"].includes(e.key)) {
+
+      if (currentStep !== "type-reading" && currentStep !== "write-kanji" && !isChecked && ["1","2","3","4"].includes(e.key)) {
+        e.preventDefault();
         const idx = parseInt(e.key) - 1;
-        if (s.choices[idx]) handleSelectChoice(s.choices[idx]);
+        if (choices[idx]) handleSelectChoice(choices[idx]);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // đăng ký 1 lần duy nhất, đọc state từ ref
+  }, [loading, finished, dueWords.length, isChecked, selectedChoice, currentStep, choices, answerStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Auto focus input ───
   useEffect(() => {

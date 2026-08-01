@@ -3,7 +3,7 @@
 // src/app/(dashboard)/dashboard/page.tsx
 // Dashboard tập trung vào Ôn tập (Review) làm mặc định và hiển thị phân bố mức ghi nhớ
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -41,23 +41,41 @@ export default function DashboardPage() {
   const [topEntries, setTopEntries] = useState<LeaderboardEntry[]>([]);
   const router = useRouter();
 
+  const fetchData = useCallback(async (user: { uid: string; email: string | null }) => {
+    const [prog, stats, due, lb] = await Promise.all([
+      getProgress(user.uid), getSRStats(user.uid),
+      getDueWords(user.uid, 200), // không giới hạn nhỏ để đếm chính xác
+      fetchLeaderboard(),
+    ]);
+    setProgress(prog);
+    setSrStats(stats);
+    setDueCount(due.length);
+    setTopEntries(lb.slice(0, 3));
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
+    let currentUser: { uid: string; email: string | null } | null = null;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) { window.location.replace("/login"); return; }
+      currentUser = user;
       setUserEmail(user.email || "");
-      const [prog, stats, due, lb] = await Promise.all([
-        getProgress(user.uid), getSRStats(user.uid),
-        getDueWords(user.uid, 50),
-        fetchLeaderboard(),
-      ]);
-      setProgress(prog); 
-      setSrStats(stats);
-      setDueCount(due.length); 
-      setTopEntries(lb.slice(0, 3));
-      setLoading(false);
+      await fetchData(user);
     });
-    return () => unsubscribe();
-  }, [router]);
+
+    // Refresh dueCount khi user quay lại tab (sau khi ôn xong)
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && currentUser) {
+        getDueWords(currentUser.uid, 200).then((due) => setDueCount(due.length));
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [router, fetchData]);
 
   const totalLearned = Object.values(srStats).reduce((a, b) => a + b, 0);
   const maxSR = Math.max(...Object.values(srStats), 1);
