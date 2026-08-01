@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -59,16 +59,39 @@ export default function FlashcardPage() {
     fetchWords();
   }, [selectedLevel]);
 
-  const handleKnown = () => { setKnown((p) => p + 1); nextCard(); };
-  const handleUnknown = () => { setUnknown((p) => p + 1); nextCard(); };
-
-  const nextCard = () => {
+  const nextCard = useCallback(() => {
     setIsFlipped(false);
     setTimeout(() => {
       if (currentIndex + 1 >= words.length) setFinished(true);
       else setCurrentIndex((p) => p + 1);
     }, 300);
-  };
+  }, [currentIndex, words.length]);
+
+  const handleKnown = useCallback(() => { setKnown((p) => p + 1); nextCard(); }, [nextCard]);
+  const handleUnknown = useCallback(() => { setUnknown((p) => p + 1); nextCard(); }, [nextCard]);
+
+  // ─── Keyboard shortcuts ───
+  // Space / Enter → lật thẻ  |  ArrowRight → Đã biết  |  ArrowLeft → Chưa biết
+  useEffect(() => {
+    if (loading || finished) return;
+    const handleKey = (e: KeyboardEvent) => {
+      // Không bắt phím nếu đang focus vào input/textarea
+      if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        setIsFlipped((prev) => !prev);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleKnown();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        handleUnknown();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [loading, finished, handleKnown, handleUnknown]);
 
   const highlightWord = (example: string, word: string) => {
     if (!example.includes(word)) return <span>{example}</span>;
@@ -218,15 +241,25 @@ export default function FlashcardPage() {
             <div className="flex gap-4 mt-6">
               <button
                 onClick={handleUnknown}
+                aria-label="Chưa biết (phím mũi tên trái)"
                 className="btn btn-ghost flex-1 py-4 rounded-2xl text-lg shadow-sm"
               >
-                ❌ Chưa biết
+                <span>❌ Chưa biết</span>
+                <span className="hidden sm:inline-block ml-2 text-xs px-1.5 py-0.5 rounded font-mono"
+                  style={{ background: "var(--surface-3)", color: "var(--text-faint)" }}>
+                  ←
+                </span>
               </button>
               <button
                 onClick={handleKnown}
+                aria-label="Đã biết (phím mũi tên phải)"
                 className="btn btn-primary flex-1 py-4 rounded-2xl text-lg shadow-sm"
               >
-                ✅ Đã biết
+                <span>✅ Đã biết</span>
+                <span className="hidden sm:inline-block ml-2 text-xs px-1.5 py-0.5 rounded font-mono"
+                  style={{ background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.7)" }}>
+                  →
+                </span>
               </button>
             </div>
           </div>

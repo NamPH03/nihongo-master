@@ -10,7 +10,7 @@ import { usePathname } from "next/navigation";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { onAuthChange } from "@/lib/auth";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { 
   Sparkles, 
   Repeat, 
@@ -31,24 +31,30 @@ export default function Navbar({}: NavbarProps) {
   const [photoURL, setPhotoURL] = useState<string>("");
 
   useEffect(() => {
-    const unsub = onAuthChange(async (user) => {
+    let unsubFirestore: (() => void) | null = null;
+
+    const unsubAuth = onAuthChange((user) => {
+      // Hủy listener Firestore cũ khi auth state thay đổi
+      if (unsubFirestore) { unsubFirestore(); unsubFirestore = null; }
+
       if (user) {
         setIsLoggedIn(true);
-        
-        try {
-          const userSnap = await getDoc(doc(db, "users", user.uid));
-          if (userSnap.exists()) {
-            setPhotoURL(userSnap.data().photoURL || "");
-          }
-        } catch (e) {
-          console.error("Lỗi lấy photoURL trong Navbar:", e);
-        }
+        // Lắng nghe real-time → avatar cập nhật ngay khi user đổi ảnh
+        unsubFirestore = onSnapshot(
+          doc(db, "users", user.uid),
+          (snap) => { if (snap.exists()) setPhotoURL(snap.data().photoURL || ""); },
+          (err) => console.error("Navbar onSnapshot lỗi:", err)
+        );
       } else {
         setIsLoggedIn(false);
         setPhotoURL("");
       }
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubFirestore) unsubFirestore();
+    };
   }, []);
 
 
@@ -62,14 +68,14 @@ export default function Navbar({}: NavbarProps) {
     { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
   ];
 
-  // Menu dưới chân trên Mobile (6 cột đầy đủ tính năng)
+  // Menu dưới chân trên Mobile — 5 tab chính theo chuẩn HIG (Human Interface Guidelines)
+  // Bỏ “Sổ tay” ra khỏi mobile (vẫn giữ trên Desktop), thêm tab “Cá nhân” để dễ truy cập profile
   const mobileLinks = [
-    { href: "/dictionary",   label: "Từ điển",    icon: Search },
-    { href: "/learn",        label: "Học mới",    icon: Sparkles },
-    { href: "/dashboard",    label: "Ôn tập",     icon: Repeat },
-    { href: "/vocabulary",   label: "Sổ tay",     icon: BookOpen },
-    { href: "/leaderboard",  label: "Xếp hạng",   icon: Trophy },
-    { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
+    { href: "/dictionary",   label: "Từ điển",   icon: Search },
+    { href: "/learn",        label: "Học mới",   icon: Sparkles },
+    { href: "/dashboard",    label: "Ôn tập",    icon: Repeat },
+    { href: "/leaderboard",  label: "Xếp hạng",  icon: Trophy },
+    { href: "/profile",      label: "Cá nhân",   icon: User },
   ];
 
   return (
@@ -163,6 +169,7 @@ export default function Navbar({}: NavbarProps) {
                 <Link
                   key={link.href}
                   href={link.href}
+                  aria-label={link.label}
                   className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all duration-200 active:scale-90
                     ${isActive ? "text-[var(--primary)]" : "text-[var(--text-muted)]"}`}
                 >

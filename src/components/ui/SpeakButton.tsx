@@ -14,6 +14,7 @@ type Props = {
 export default function SpeakButton({ text, slow = false, size = "md", label }: Props) {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => { setSupported(isSpeechSupported()); }, []);
   if (!supported) return null;
@@ -26,11 +27,16 @@ export default function SpeakButton({ text, slow = false, size = "md", label }: 
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Unlock iOS Safari speech synthesis với user gesture đầu tiên
+    setHasError(false);
     unlockSpeechSynthesis();
-    setSpeaking(true);
-    speakJapanese(text, slow);
-    setTimeout(() => setSpeaking(false), slow ? 3000 : 1500);
+    speakJapanese(text, slow, {
+      onStart: () => setSpeaking(true),
+      onEnd: () => setSpeaking(false),
+      onError: () => {
+        setSpeaking(false);
+        setHasError(true);
+      },
+    });
   };
 
   return (
@@ -38,14 +44,16 @@ export default function SpeakButton({ text, slow = false, size = "md", label }: 
       onClick={handleClick}
       className={`${sizeClass} rounded-full flex items-center justify-center transition-all duration-200 active:scale-90`}
       style={
-        speaking
+        hasError
+          ? { background: "rgba(239, 68, 68, 0.15)", color: "#ef4444" }
+          : speaking
           ? { background: "var(--primary-glow)", color: "var(--primary)", transform: "scale(1.1)" }
           : { background: "var(--surface-2)", color: "var(--text-muted)" }
       }
-      title={label || (slow ? "Phát âm chậm" : "Phát âm")}
+      title={hasError ? "Lỗi phát âm trên trình duyệt" : (label || (slow ? "Phát âm chậm" : "Phát âm"))}
       aria-label={label || (slow ? "Phát âm chậm" : "Phát âm từ này")}
     >
-      {slow ? "🐢" : speaking ? "🔈" : "🔊"}
+      {hasError ? "⚠️" : slow ? "🐢" : speaking ? "🔈" : "🔊"}
     </button>
   );
 }

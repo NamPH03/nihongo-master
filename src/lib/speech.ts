@@ -31,8 +31,15 @@ function getBestJapaneseVoice(): SpeechSynthesisVoice | null {
   );
 }
 
-export function speakJapanese(text: string, slow = false): void {
-  if (!isSpeechSupported() || !text?.trim()) return;
+export function speakJapanese(
+  text: string,
+  slow = false,
+  callbacks?: { onStart?: () => void; onEnd?: () => void; onError?: (e: SpeechSynthesisErrorEvent) => void }
+): void {
+  if (!isSpeechSupported() || !text?.trim()) {
+    callbacks?.onEnd?.();
+    return;
+  }
 
   // Cancel bất kỳ utterance đang phát
   window.speechSynthesis.cancel();
@@ -42,6 +49,14 @@ export function speakJapanese(text: string, slow = false): void {
   utterance.rate = slow ? 0.6 : 1.0;
   utterance.pitch = 1.0;
   utterance.volume = 1.0;
+
+  if (callbacks?.onStart) utterance.onstart = callbacks.onStart;
+  utterance.onend = () => callbacks?.onEnd?.();
+  utterance.onerror = (e) => {
+    console.warn("TTS Error:", e);
+    callbacks?.onError?.(e);
+    callbacks?.onEnd?.();
+  };
 
   const voice = getBestJapaneseVoice();
   if (voice) utterance.voice = voice;

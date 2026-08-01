@@ -1,15 +1,11 @@
 // src/app/api/debug/uid-by-email/route.ts
 // Tìm UID từ email — CHỈ DÙNG ĐỂ DEBUG
 import { NextRequest, NextResponse } from "next/server";
+import { debugGuard } from "../_guard";
 
 export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get("secret");
-  const cronSecret = process.env.CRON_SECRET;
-  const isDev = process.env.NODE_ENV === "development";
-
-  if (secret !== cronSecret && !isDev) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = debugGuard(req);
+  if (guard) return guard;
 
   const email = req.nextUrl.searchParams.get("email");
   if (!email) return NextResponse.json({ error: "Missing email" }, { status: 400 });

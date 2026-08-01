@@ -168,11 +168,13 @@ export async function getSRStats(
 ): Promise<Record<number, number>> {
   const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
-  // Load vocabulary IDs một lần dưới dạng Set để check O(1)
-  const vocabSnap = await getDocs(collection(db, "vocabulary"));
-  const vocabIds = new Set(vocabSnap.docs.map((d) => d.id));
+  // Dùng vocabCache thay vì đọc lại Firestore vocabulary một lần nữa
+  const [allVocab, snap] = await Promise.all([
+    getAllVocabulary(),
+    getDocs(userProgressCollection(userId)),
+  ]);
+  const vocabIds = new Set(allVocab.map((v) => v.id));
 
-  const snap = await getDocs(userProgressCollection(userId));
   snap.forEach((d) => {
     if (d.id === "stats") return;
     // Bỏ qua orphan progress docs (vocabulary đã bị xóa hoặc re-import)

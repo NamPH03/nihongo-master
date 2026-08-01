@@ -127,6 +127,8 @@ export default function ReviewPage() {
   const router = useRouter();
   // Track đã gọi markStudiedToday trong phiên này chưa
   const studiedTodayRef = useRef(false);
+  // Lock để chống double-click / double-Enter trong khi đang xử lý async
+  const isProcessingRef = useRef(false);
 
   // ─── Auth + Fetch data (gộp 1 useEffect) ───
   useEffect(() => {
@@ -310,6 +312,9 @@ export default function ReviewPage() {
 
   // ─── Handle result (khi bấm nút "Tiếp tục" ở bottom bar) ───
   const handleResult = async (remembered: boolean) => {
+    // Chống double-click/double-Enter trong khi đang xử lý async Firestore
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
     const isRecheck = reinsertedWordIds.has(currentWord.wordId);
 
     if (!remembered) {
@@ -341,9 +346,11 @@ export default function ReviewPage() {
 
       if (next === "meaning-to-word") setChoices(generateChoices(currentWord, allWords, "word"));
       else if (next === "word-to-meaning" || next === "listening") setChoices(generateChoices(currentWord, allWords, "meaning"));
+      isProcessingRef.current = false;
     } else {
       // Khi đã trả lời ĐÚNG → chuyển sang từ tiếp theo
       await finishWord(!forgotThisWord);
+      isProcessingRef.current = false;
     }
   };
 
@@ -397,12 +404,13 @@ export default function ReviewPage() {
   // ─── Kiểm tra đáp án ───
   const handleCheckAnswer = () => {
     if (isChecked) return;
+    // Set canAdvanceRef TRƯỚC khi setState để đảm bảo lock kịp thời
+    canAdvanceRef.current = Date.now() + 500;
     if (currentStep === "type-reading") {
       const correct = currentWord.reading.trim();
       const isRight = typedAnswer.trim() === correct;
       setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
-      canAdvanceRef.current = Date.now() + 350; // Khóa phím Enter 350ms chống double tap
       if (isRight) sfx.playCorrect();
       else sfx.playWrong();
     } else {
@@ -414,7 +422,6 @@ export default function ReviewPage() {
       setSelectedAnswer(selectedChoice);
       setAnswerStatus(isRight ? "correct" : "wrong");
       setIsChecked(true);
-      canAdvanceRef.current = Date.now() + 350; // Khóa phím Enter 350ms chống double tap
       if (isRight) sfx.playCorrect();
       else sfx.playWrong();
     }
@@ -435,8 +442,8 @@ export default function ReviewPage() {
         if (!isChecked) {
           if (currentStep !== "write-kanji" && selectedChoice) handleCheckAnswer();
         } else {
-          // Chỉ cho phép chuyển từ nếu đã trôi qua ít nhất 350ms sau khi bấm Kiểm tra
-          if (Date.now() >= canAdvanceRef.current) {
+          // Chỉ cho phép chuyển từ nếu đã qua debounce 500ms VÀ không đang xử lý
+          if (Date.now() >= canAdvanceRef.current && !isProcessingRef.current) {
             handleResult(answerStatus === "correct");
           }
         }
@@ -886,7 +893,12 @@ export default function ReviewPage() {
               </>
             ) : (
               <button
-                onClick={() => handleResult(answerStatus === "correct")}
+                onClick={() => {
+                  if (Date.now() >= canAdvanceRef.current && !isProcessingRef.current) {
+                    handleResult(answerStatus === "correct");
+                  }
+                }}
+                disabled={isProcessingRef.current}
                 className="btn w-full sm:w-auto px-12 py-4 rounded-2xl font-bold transition-all"
                 style={{ background: answerStatus === "correct" ? "var(--primary)" : "#ef4444", color: answerStatus === "correct" ? "#0d1f14" : "#fff" }}
               >

@@ -15,8 +15,11 @@ function containsVietnamese(text: string): boolean {
 async function translateText(text: string, sl: string, tl: string): Promise<string> {
   if (!text?.trim()) return "";
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000); // 3s timeout
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text.trim())}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    clearTimeout(timeout);
     if (!res.ok) return text;
     const data = await res.json();
     const translated = Array.isArray(data?.[0])
@@ -24,6 +27,7 @@ async function translateText(text: string, sl: string, tl: string): Promise<stri
       : "";
     return translated || text;
   } catch {
+    // Timeout hoặc lỗi mạng → trả về bản gốc
     return text;
   }
 }
@@ -80,9 +84,13 @@ export async function GET(req: NextRequest) {
         const translatedSenses = await Promise.all(
           senses.map(async (sense) => {
             const englishDefs = (sense.english_definitions || []).filter(Boolean) as string[];
-            const translated_definitions = shouldTranslate
-              ? await Promise.all(englishDefs.slice(0, 2).map((d) => translateText(d, "en", "vi")))
-              : englishDefs;
+            // Dùng allSettled: nếu 1 translate thất bại, các định nghĩa khác vẫn ok
+            const settledResults = shouldTranslate
+              ? await Promise.allSettled(englishDefs.slice(0, 2).map((d) => translateText(d, "en", "vi")))
+              : englishDefs.slice(0, 2).map((d) => ({ status: "fulfilled" as const, value: d }));
+            const translated_definitions = settledResults.map((r, i) =>
+              r.status === "fulfilled" ? r.value : englishDefs[i] ?? ""
+            );
             return {
               ...sense,
               english_definitions: englishDefs,
