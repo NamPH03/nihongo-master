@@ -58,7 +58,7 @@ export default function HomePage() {
         style={{ background: "var(--nav-bg)" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image src="/icon-192.png" alt="Logo" width={24} height={24} className="rounded-full object-cover" />
+            <Image src="/icon-512.png" alt="Logo" width={28} height={28} className="rounded-xl object-cover" />
             <span className="text-base font-bold" style={{ color: "var(--text)" }}>
               Nihongo <span style={{ color: "var(--primary)" }}>Master</span>
             </span>

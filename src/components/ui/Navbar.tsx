@@ -95,7 +95,7 @@ export default function Navbar({}: NavbarProps) {
             href={isLoggedIn ? "/dashboard" : "/"}
             className="flex items-center gap-2 group transition-transform active:scale-95"
           >
-            <Image src="/icon-192.png" alt="Logo" width={24} height={24} className="rounded-full object-cover transition-transform group-hover:rotate-12 duration-300" />
+            <Image src="/icon-512.png" alt="Logo" width={28} height={28} className="rounded-xl object-cover transition-transform group-hover:rotate-12 duration-300" />
             <span className="text-base font-bold tracking-tight"
               style={{ color: "var(--text)" }}>
               Nihongo <span style={{ color: "var(--primary)" }}>Master</span>

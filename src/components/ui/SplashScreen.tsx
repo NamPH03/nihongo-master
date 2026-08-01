@@ -37,14 +37,15 @@ export default function SplashScreen() {
         fadeOut ? "opacity-0 pointer-events-none" : "opacity-100"
       }`}
     >
-      {/* Logo & App Icon với hiệu ứng Glow xanh lục trên nền đen */}
+      {/* Logo & App Icon với hiệu ứng Glow trên nền đen */}
       <div className="flex flex-col items-center gap-4 animate-scale-in">
-        <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-tr from-emerald-600 via-green-500 to-teal-400 p-[3px] shadow-[0_0_50px_rgba(34,197,94,0.35)] animate-pulse">
-          <div className="w-full h-full bg-black rounded-[21px] flex items-center justify-center">
-            <span className="font-jp text-5xl font-extrabold bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent">
-              日
-            </span>
-          </div>
+        <div className="relative w-28 h-28 rounded-3xl p-[2px] shadow-[0_0_60px_rgba(34,197,94,0.4)] animate-pulse overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon-512.png"
+            alt="Nihongo Master Logo"
+            className="w-full h-full object-cover rounded-3xl"
+          />
         </div>
 
         <div className="flex flex-col items-center text-center">

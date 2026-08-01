@@ -44,7 +44,7 @@ export default function LoginPage() {
 
         <div className="text-center mb-7">
           <Link href="/" className="inline-flex items-center gap-2 mb-5">
-            <Image src="/icon-192.png" alt="Logo" width={32} height={32} className="rounded-full object-cover" />
+            <Image src="/icon-512.png" alt="Logo" width={36} height={36} className="rounded-xl object-cover" />
             <span className="font-bold text-lg" style={{ color: "var(--primary)" }}>
               Nihongo Master
             </span>
