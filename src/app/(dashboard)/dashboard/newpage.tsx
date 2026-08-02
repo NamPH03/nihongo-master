@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { collection, getDocs } from "firebase/firestore"; // Thêm để lấy danh sách từ trực tiếp
 import Link from "next/link";
-import { getProgress, getSRStats, getDueWords, ProgressData, WordProgress } from "@/lib/progress";
+import { getProgress, ProgressData, WordProgress } from "@/lib/progress";
 import NotificationSetup from "@/components/ui/NotificationSetup";
 import { checkAndNotify, canNotifyNow, setLastNotifyTime } from "@/lib/notifications";
 
