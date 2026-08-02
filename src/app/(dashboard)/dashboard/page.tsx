@@ -52,6 +52,10 @@ export default function DashboardPage() {
     setDueCount(due.length);
     setTopEntries(lb.slice(0, 3));
     setLoading(false);
+    if (typeof window !== "undefined") {
+      (window as unknown as { __APP_READY__?: boolean }).__APP_READY__ = true;
+      window.dispatchEvent(new Event("app-ready"));
+    }
   }, []);
 
   useEffect(() => {

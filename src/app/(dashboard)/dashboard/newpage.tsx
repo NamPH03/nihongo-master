@@ -32,36 +32,53 @@ export default function DashboardPage() {
       setUserEmail(user.email || "");
 
       try {
-        // 1. Lấy stats tiến độ, thống kê SR và từ đến hạn học
-        const [prog, stats, due] = await Promise.all([
-          getProgress(user.uid),
-          getSRStats(user.uid),
-          getDueWords(user.uid),
-        ]);
+        // 1. Lấy stats tổng quan (streak, totalLearned)
+        const prog = await getProgress(user.uid);
 
-        // 2. Thay thế getUserWordStatuses bằng cách fetch trực tiếp sub-collection progress
+        // 2. Chỉ đọc subcollection progress 1 lần duy nhất cho toàn bộ Dashboard
         const progressColRef = collection(db, "users", user.uid, "progress");
         const snap = await getDocs(progressColRef);
+
         const fetchedWords: DashboardWord[] = [];
-        
-        snap.forEach((doc) => {
-          // Bỏ qua document "stats" vì nó chứa thông tin streak chứ không phải từ vựng
-          if (doc.id !== "stats") {
-            fetchedWords.push({
-              id: doc.id,
-              ...doc.data()
-            } as DashboardWord);
+        const calculatedSrStats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        const now = new Date().toISOString();
+        let calculatedDueCount = 0;
+
+        snap.forEach((docSnap) => {
+          if (docSnap.id === "stats") return;
+          const data = docSnap.data();
+          fetchedWords.push({
+            id: docSnap.id,
+            ...data,
+          } as DashboardWord);
+
+          // Tính SR Stats
+          const level = Number(data.srLevel || 0);
+          if (level >= 1 && level <= 5) {
+            calculatedSrStats[level]++;
+          }
+
+          // Tính Due Count
+          if (data.status === "learned") {
+            const nextReview = data.nextReview;
+            if (!nextReview || nextReview <= now) {
+              calculatedDueCount++;
+            }
           }
         });
 
         setProgress(prog);
-        setSrStats(stats);
-        setDueCount(due.length);
+        setSrStats(calculatedSrStats);
+        setDueCount(calculatedDueCount);
         setUserWords(fetchedWords);
       } catch (error) {
         console.error("Lỗi khi tải dữ liệu dashboard:", error);
       } finally {
         setLoading(false);
+        if (typeof window !== "undefined") {
+          (window as unknown as { __APP_READY__?: boolean }).__APP_READY__ = true;
+          window.dispatchEvent(new Event("app-ready"));
+        }
       }
 
       // 3. Kiểm tra thông báo tự động cho người dùng

@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import StudySession from "@/components/learn/StudySession";
 import { getLearnedOnlyWordIds } from "@/lib/progress";
+import { getAllVocabulary } from "@/lib/vocabCache";
 
 type Vocabulary = {
   id: string;
@@ -49,31 +49,35 @@ export default function LessonPage() {
       if (!courseId || !lessonId) return;
 
       try {
-        // Load từ vựng của bài học và progress song song
-        const [snap, learnedIds] = await Promise.all([
-          getDocs(
-            query(
-              collection(db, "vocabulary"),
-              where("courseId", "==", courseId),
-              where("lessonId", "==", lessonId)
-            )
-          ),
+        // Load từ vựng của bài học từ cache và progress song song
+        const [allVocab, learnedIds] = await Promise.all([
+          getAllVocabulary(),
           getLearnedOnlyWordIds(user.uid),
         ]);
 
-        if (snap.empty) {
+        const lessonVocab = allVocab.filter(
+          (v) => v.courseId === courseId && (v.lessonId || "").trim() === lessonId.trim()
+        );
+
+        if (lessonVocab.length === 0) {
           setNotFound(true);
           return;
         }
 
-        const dataWords: Vocabulary[] = [];
-        let firstLessonTitle = "";
-
-        snap.docs.forEach((doc) => {
-          const data = doc.data() as Omit<Vocabulary, "id">;
-          dataWords.push({ id: doc.id, ...data });
-          if (!firstLessonTitle) firstLessonTitle = data.lessonTitle || lessonId;
-        });
+        const dataWords: Vocabulary[] = lessonVocab.map((v) => ({
+          id: v.id,
+          word: v.word,
+          reading: v.reading,
+          type: v.type || "",
+          meaning: v.meaning,
+          example: v.example || "",
+          exampleMeaning: v.exampleMeaning || "",
+          level: v.level || "N5",
+          courseId: v.courseId,
+          courseName: v.courseName,
+          lessonId: v.lessonId,
+          lessonTitle: v.lessonId,
+        }));
 
         setWords(dataWords);
 

@@ -14,18 +14,44 @@ export default function SplashScreen() {
       return;
     }
 
-    const timerFade = setTimeout(() => {
-      setFadeOut(true);
-    }, 2200);
+    let isAppReady = (window as unknown as { __APP_READY__?: boolean }).__APP_READY__ || false;
+    let minTimePassed = false;
 
-    const timerRemove = setTimeout(() => {
-      setVisible(false);
-      sessionStorage.setItem("has_seen_splash", "true");
-    }, 2600);
+    const tryDismiss = () => {
+      if (isAppReady && minTimePassed) {
+        setFadeOut(true);
+        setTimeout(() => {
+          setVisible(false);
+          sessionStorage.setItem("has_seen_splash", "true");
+        }, 500);
+      }
+    };
+
+    // 1. Thời gian hiển thị tối thiểu để người dùng xem hiệu ứng logo (1.2s)
+    const minTimer = setTimeout(() => {
+      minTimePassed = true;
+      tryDismiss();
+    }, 1200);
+
+    // 2. Timeout an toàn (tối đa 4s) để phòng trường hợp mất mạng/lỗi mạng không bị kẹt màn hình đen
+    const maxTimer = setTimeout(() => {
+      isAppReady = true;
+      minTimePassed = true;
+      tryDismiss();
+    }, 4000);
+
+    // 3. Lắng nghe sự kiện "app-ready" khi Dashboard tải xong dữ liệu
+    const handleReady = () => {
+      isAppReady = true;
+      tryDismiss();
+    };
+
+    window.addEventListener("app-ready", handleReady);
 
     return () => {
-      clearTimeout(timerFade);
-      clearTimeout(timerRemove);
+      clearTimeout(minTimer);
+      clearTimeout(maxTimer);
+      window.removeEventListener("app-ready", handleReady);
     };
   }, []);
 

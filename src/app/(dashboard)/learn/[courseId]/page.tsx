@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/ui/Navbar";
 import { getLearnedOnlyWordIds } from "@/lib/progress";
+import { getAllVocabulary } from "@/lib/vocabCache";
 
 type LessonSummary = {
   lessonId: string;
@@ -38,13 +38,15 @@ export default function CoursePage() {
       if (!courseId) return;
 
       try {
-        // Load từ vựng của khoá học và progress song song
-        const [snap, learnedIds] = await Promise.all([
-          getDocs(query(collection(db, "vocabulary"), where("courseId", "==", courseId))),
+        // Load từ vựng của khoá học từ cache và progress song song
+        const [allVocab, learnedIds] = await Promise.all([
+          getAllVocabulary(),
           getLearnedOnlyWordIds(user.uid),
         ]);
 
-        if (snap.empty) {
+        const courseVocab = allVocab.filter((v) => v.courseId === courseId);
+
+        if (courseVocab.length === 0) {
           setNotFound(true);
           return;
         }
@@ -52,15 +54,14 @@ export default function CoursePage() {
         const lessonMap = new Map<string, { title: string; wordIds: string[] }>();
         let firstName = "";
 
-        snap.docs.forEach((doc) => {
-          const data = doc.data() as Record<string, unknown>;
-          if (!firstName) firstName = String(data.courseName || courseId);
-          const lId = String(data.lessonId || "Bài chưa gán").trim();
-          const lTitle = String(data.lessonTitle || lId || "Bài chưa gán").trim();
+        courseVocab.forEach((v) => {
+          if (!firstName) firstName = String(v.courseName || courseId);
+          const lId = String(v.lessonId || "Bài chưa gán").trim();
+          const lTitle = String(lId || "Bài chưa gán").trim();
           if (!lessonMap.has(lId)) {
             lessonMap.set(lId, { title: lTitle, wordIds: [] });
           }
-          lessonMap.get(lId)!.wordIds.push(doc.id);
+          lessonMap.get(lId)!.wordIds.push(v.id);
         });
 
         const lessonList: LessonSummary[] = Array.from(lessonMap.entries()).map(([lId, item]) => {

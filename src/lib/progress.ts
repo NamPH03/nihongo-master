@@ -33,6 +33,7 @@ export type ProgressData = {
   lastStudyDate: string;
   totalLearned: number;
   dailyHistory: Record<string, number>;
+  masteredCount?: number;
 };
 
 // ===== PATH HELPERS =====
@@ -97,6 +98,15 @@ export async function promoteWord(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   }, { merge: true });
+
+  if (currentLevel < 5 && newLevel === 5) {
+    const statsRef = userStatsRef(userId);
+    const snap = await getDoc(statsRef);
+    if (snap.exists()) {
+      const currentMastered = snap.data().masteredCount || 0;
+      await setDoc(statsRef, { masteredCount: currentMastered + 1 }, { merge: true });
+    }
+  }
 }
 
 // Giảm mức khi quên
@@ -114,6 +124,15 @@ export async function demoteWord(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   }, { merge: true });
+
+  if (currentLevel === 5 && newLevel < 5) {
+    const statsRef = userStatsRef(userId);
+    const snap = await getDoc(statsRef);
+    if (snap.exists()) {
+      const currentMastered = snap.data().masteredCount || 0;
+      await setDoc(statsRef, { masteredCount: Math.max(0, currentMastered - 1) }, { merge: true });
+    }
+  }
 }
 
 // ===== QUERIES =====

@@ -165,14 +165,7 @@ export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
       const stats = statsSnap.data();
       const totalLearned = stats.totalLearned || 0;
       const streak = stats.streak || 0;
-
-      // 3. Get mastered count (srLevel === 5) from progress subcollection
-      const progressSnap = await getDocs(
-        collection(db, "users", uid, "progress")
-      );
-      const masteredCount = progressSnap.docs.filter(
-        (d) => d.id !== "stats" && d.data().srLevel === 5
-      ).length;
+      const masteredCount = stats.masteredCount || 0;
 
       const xp = calcXP(totalLearned, streak);
       const badges = getEarnedBadges(totalLearned, streak, masteredCount);

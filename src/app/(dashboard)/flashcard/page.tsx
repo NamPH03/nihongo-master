@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db, auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import SpeakButton from "@/components/ui/SpeakButton";
 import Navbar from "@/components/ui/Navbar";
+import { getAllVocabulary } from "@/lib/vocabCache";
 
 type Vocabulary = {
   id: string;
@@ -46,10 +46,20 @@ export default function FlashcardPage() {
       setUnknown(0);
       setFinished(false);
       try {
-        const q = query(collection(db, "vocabulary"), where("level", "==", selectedLevel));
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Vocabulary[];
-        setWords(data.sort(() => Math.random() - 0.5));
+        const allVocab = await getAllVocabulary();
+        const filtered = allVocab
+          .filter((v) => (v.level || "N5") === selectedLevel)
+          .map((v) => ({
+            id: v.id,
+            word: v.word,
+            reading: v.reading,
+            meaning: v.meaning,
+            level: v.level || "N5",
+            type: v.type || "",
+            example: v.example || "",
+            exampleMeaning: v.exampleMeaning || "",
+          })) as Vocabulary[];
+        setWords(filtered.sort(() => Math.random() - 0.5));
       } catch (error) {
         console.error("Lỗi:", error);
       } finally {
