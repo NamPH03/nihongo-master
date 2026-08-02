@@ -407,11 +407,11 @@ export default function ProfilePage() {
               </div>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                 style={{
-                  background: typeof window !== "undefined" && Notification.permission === "granted" ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
-                  color: typeof window !== "undefined" && Notification.permission === "granted" ? "#22c55e" : "#ef4444"
+                  background: typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                  color: typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" ? "#22c55e" : "#ef4444"
                 }}
               >
-                {typeof window !== "undefined" && Notification.permission === "granted" ? "Đã bật" : "Chưa bật"}
+                {typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" ? "Đã bật" : "Chưa bật"}
               </span>
             </div>
             
@@ -422,6 +422,10 @@ export default function ProfilePage() {
             <button
               onClick={async () => {
                 if (!currentUser) return;
+                if (typeof window !== "undefined" && !("Notification" in window)) {
+                  alert("Trình duyệt di động này chưa hỗ trợ Thông báo trực tiếp (iOS cần cài đặt ứng dụng dạng PWA trước).");
+                  return;
+                }
                 try {
                   const { registerPushNotifications } = await import("@/lib/fcm");
                   const success = await registerPushNotifications(currentUser.uid);
