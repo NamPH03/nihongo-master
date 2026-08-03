@@ -6,6 +6,13 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const updateThemeMeta = (dark: boolean) => {
+    const meta = document.getElementById("theme-color-meta");
+    if (meta) {
+      meta.setAttribute("content", dark ? "#0c1410" : "#f6fdf8");
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("theme");
@@ -13,6 +20,7 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     const shouldBeDark = saved === "dark" || (!saved && prefersDark);
     setIsDark(shouldBeDark);
     document.documentElement.classList.toggle("dark", shouldBeDark);
+    updateThemeMeta(shouldBeDark);
   }, []);
 
   const toggle = () => {
@@ -20,6 +28,7 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
     setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("theme", next ? "dark" : "light");
+    updateThemeMeta(next);
   };
 
   if (!mounted) return <div className="w-9 h-9" />;
