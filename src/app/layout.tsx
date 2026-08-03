@@ -21,10 +21,9 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||((!t)&&d)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
           }}
         />
-      <!-- Viewport: viewport-fit=cover bắt buộc để env(safe-area-inset-top) hoạt động trên iPhone/Android -->
+        {/* viewport-fit=cover: bắt buộc để env(safe-area-inset-top) hoạt động trên iPhone */}
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <!-- black: status bar đục → không cần xử lý safe-area phức tạp, content bắt đầu ngay dưới -->
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Nihongo Master" />
         <link rel="apple-touch-icon" href="/icon-512.png" />

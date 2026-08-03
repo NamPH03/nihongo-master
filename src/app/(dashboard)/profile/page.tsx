@@ -4,10 +4,9 @@
 // Trang thông tin cá nhân của người dùng hỗ trợ upload ảnh đại diện (avatar)
 
 import { useEffect, useState, useRef } from "react";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { onAuthChange, changePassword, hasPasswordProvider } from "@/lib/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/Navbar";
 import { getProgress, ProgressData } from "@/lib/progress";
@@ -84,7 +83,34 @@ export default function ProfilePage() {
     }
   };
 
-  // Xử lý upload ảnh đại diện lên Firebase Storage
+  // Nén ảnh về kích thước và chất lượng phù hợp rồi trả về chuỗi base64
+  const compressImageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        // Tối đa 256x256 px
+        const MAX = 256;
+        const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas không được hỗ trợ")); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        // Chất lượng 0.82 ~ 50-80 KB cho ảnh 256px
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Không đọc được file ảnh")); };
+      img.src = url;
+    });
+  };
+
+  // Xử lý upload ảnh đại diện — nén bằng canvas rồi lưu base64 vào Firestore
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
   };
@@ -98,36 +124,31 @@ export default function ProfilePage() {
       return;
     }
 
-    // File quá lớn > 5MB
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError("Ảnh phải nhỏ hơn 5MB!");
+    // Giới hạn file gốc tối đa 10MB (sau nén sẽ rất nhỏ)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("Ảnh gốc phải nhỏ hơn 10MB!");
       return;
     }
 
-    // Reset
     if (fileInputRef.current) fileInputRef.current.value = "";
     setUploadError("");
     setUploading(true);
 
     try {
-      const fileRef = ref(storage, `avatars/${currentUser.uid}`);
-      const snapshot = await uploadBytes(fileRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      // 1. Nén ảnh xuống 256x256 dùng Canvas API
+      const base64 = await compressImageToBase64(file);
 
+      // 2. Lưu base64 vào Firestore (không cần Firebase Storage)
       await updateDoc(doc(db, "users", currentUser.uid), {
-        photoURL: downloadURL
+        photoURL: base64
       });
 
-      setPhotoURL(downloadURL);
+      // 3. Cập nhật UI ngay lập tức
+      setPhotoURL(base64);
     } catch (err: unknown) {
-      console.error("Lỗi tải ảnh lên Firebase:", err);
+      console.error("Ảnh upload lỗi:", err);
       const msg = err instanceof Error ? err.message : "Lỗi không xác định";
-      // Firebase Storage permission denied
-      if (msg.includes("unauthorized") || msg.includes("permission")) {
-        setUploadError("Không có quyền upload. Vui lòng liên hệ admin.");
-      } else {
-        setUploadError("Upload thất bại: " + msg);
-      }
+      setUploadError("Upload thất bại: " + msg);
     } finally {
       setUploading(false);
     }
