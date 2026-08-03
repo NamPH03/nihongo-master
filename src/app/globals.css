@@ -80,8 +80,8 @@ body {
   color: var(--text);
   transition: background-color 0.3s ease, color 0.3s ease;
   line-height: 1.6;
-  /* Bu khoang trang cho Fixed Navbar tren + safe-area iPhone */
-  padding-top: calc(env(safe-area-inset-top) + 3.5rem);
+  /* Bu khoang trang cho Fixed Navbar tren */
+  padding-top: 3.5rem;
 }
 
 /* Tren mobile: but them khoang trang cho Bottom Navigation */

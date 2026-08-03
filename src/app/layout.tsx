@@ -21,8 +21,7 @@ export default function RootLayout({
             __html: `(function(){try{var t=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||((!t)&&d)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
           }}
         />
-        {/* viewport-fit=cover: bắt buộc để env(safe-area-inset-top) hoạt động trên iPhone */}
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <meta name="theme-color" content="#f6fdf8" id="theme-color-meta" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

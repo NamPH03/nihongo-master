@@ -85,7 +85,6 @@ export default function Navbar({}: NavbarProps) {
           background: "var(--surface)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
-          paddingTop: "env(safe-area-inset-top)",
         }}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
