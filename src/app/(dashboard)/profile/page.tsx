@@ -116,9 +116,6 @@ export default function ProfilePage() {
       
       // 5. Cập nhật state UI
       setPhotoURL(downloadURL);
-      
-      // Refresh trang để cập nhật ảnh trên Navbar đồng bộ
-      window.location.reload();
     } catch (err) {
       console.error("Lỗi tải ảnh lên Firebase:", err);
       alert("Có lỗi xảy ra khi tải ảnh lên, vui lòng thử lại!");

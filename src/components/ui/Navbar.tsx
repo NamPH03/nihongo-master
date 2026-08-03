@@ -78,12 +78,13 @@ export default function Navbar({}: NavbarProps) {
   return (
     <>
       {/* Top Navbar: Thêm padding-top safe-area cho iPhone để phủ kín status bar */}
-      <nav className="navbar border-b sticky top-0 z-40" 
+      <nav className="navbar border-b fixed top-0 left-0 right-0 z-40" 
            style={{ 
              borderColor: "var(--border-color)", 
-             background: "var(--surface)", 
-             backdropFilter: "blur(8px)",
-             paddingTop: "calc(env(safe-area-inset-top) + 2px)", // Phủ kín status bar trên iPhone
+             background: "var(--nav-bg)", 
+             backdropFilter: "blur(12px)",
+             WebkitBackdropFilter: "blur(12px)",
+             paddingTop: "env(safe-area-inset-top)",
            }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
 
@@ -185,16 +186,17 @@ export default function Navbar({}: NavbarProps) {
         </div>
       )}
 
-      {/* Thêm khoảng trống padding-bottom trên mobile để không bị đè bởi BottomNav */}
-      {isLoggedIn && (
-        <style jsx global>{`
-          @media (max-width: 768px) {
-            body {
-              padding-bottom: calc(env(safe-area-inset-bottom) + 5.2rem) !important;
-            }
+      {/* Thêm khoảng trống padding trên/dưới cho nội dung trang khi có fixed Navbars */}
+      <style jsx global>{`
+        body {
+          padding-top: calc(env(safe-area-inset-top) + 3.5rem) !important;
+        }
+        @media (max-width: 768px) {
+          body {
+            padding-bottom: calc(env(safe-area-inset-bottom) + 5.2rem) !important;
           }
-        `}</style>
-      )}
+        }
+      `}</style>
     </>
   );
 }
