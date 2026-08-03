@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/notify?secret=nihongo-cron-2026-secure",
-      "schedule": "0 0,12 * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }
