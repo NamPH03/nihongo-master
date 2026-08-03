@@ -58,14 +58,13 @@ export default function Navbar({}: NavbarProps) {
   }, []);
 
 
-  // Menu trên Desktop (Đầy đủ)
+  // Menu trên Desktop (5 trang chính)
   const desktopLinks = [
     { href: "/dictionary",   label: "Từ điển",    icon: Search },
     { href: "/learn",        label: "Học mới",    icon: Sparkles },
     { href: "/dashboard",    label: "Ôn tập",     icon: Repeat },
     { href: "/vocabulary",   label: "Sổ tay",     icon: BookOpen },
     { href: "/leaderboard",  label: "Xếp hạng",   icon: Trophy },
-    { href: "/progress",     label: "Tiến độ",    icon: BarChart2 },
   ];
 
   // Menu dưới chân trên Mobile — 5 tab chính theo chuẩn HIG (Human Interface Guidelines)
