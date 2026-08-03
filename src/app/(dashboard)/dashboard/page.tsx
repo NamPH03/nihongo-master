@@ -9,7 +9,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  getProgress, getSRStats, getDueWords,
+  getProgress, getDashboardSummary, getDueWords,
   ProgressData
 } from "@/lib/progress";
 import { fetchLeaderboard, LeaderboardEntry } from "@/lib/leaderboard";
@@ -42,14 +42,14 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const fetchData = useCallback(async (user: { uid: string; email: string | null }) => {
-    const [prog, stats, due, lb] = await Promise.all([
-      getProgress(user.uid), getSRStats(user.uid),
-      getDueWords(user.uid, 200), // không giới hạn nhỏ để đếm chính xác
+    const [prog, summary, lb] = await Promise.all([
+      getProgress(user.uid),
+      getDashboardSummary(user.uid),
       fetchLeaderboard(),
     ]);
     setProgress(prog);
-    setSrStats(stats);
-    setDueCount(due.length);
+    setSrStats(summary.srStats);
+    setDueCount(summary.dueCount);
     setTopEntries(lb.slice(0, 3));
     setLoading(false);
     if (typeof window !== "undefined") {

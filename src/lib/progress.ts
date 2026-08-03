@@ -6,6 +6,12 @@ import {
 } from "firebase/firestore";
 import { getAllVocabulary, type CachedVocabItem } from "@/lib/vocabCache";
 import { pushLeaderboardSnapshot } from "@/lib/leaderboard";
+import {
+  getProgressCache,
+  setProgressCache,
+  invalidateProgressCache,
+  type ProgressDoc,
+} from "@/lib/progressCache";
 
 // ===== SPACED REPETITION INTERVALS =====
 export const SR_INTERVALS: Record<number, number> = {
@@ -51,6 +57,28 @@ function userStatsRef(userId: string) {
   return doc(db, "users", userId, "progress", "stats");
 }
 
+// Helper lấy danh sách progress docs (ưu tiên in-memory cache)
+async function fetchUserProgressDocs(userId: string): Promise<ProgressDoc[]> {
+  const cached = getProgressCache(userId);
+  if (cached) return cached;
+
+  const snap = await getDocs(userProgressCollection(userId));
+  const docs: ProgressDoc[] = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      wordId: data.wordId || d.id,
+      srLevel: Number(data.srLevel || 0),
+      nextReview: data.nextReview || null,
+      status: data.status || "new",
+      lastReviewed: data.lastReviewed || null,
+    };
+  });
+
+  setProgressCache(userId, docs);
+  return docs;
+}
+
 // ===== WORD PROGRESS =====
 
 // Lưu từ từ từ điển vào sổ tay → thẳng mức 1 (status: "learned")
@@ -66,6 +94,7 @@ export async function saveWordFromDictionary(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   }, { merge: true });
+  invalidateProgressCache(userId);
 }
 
 
@@ -82,6 +111,7 @@ export async function markNewWordLearned(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   });
+  invalidateProgressCache(userId);
 }
 
 // Nâng mức sau khi ôn thành công
@@ -99,6 +129,7 @@ export async function promoteWord(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   }, { merge: true });
+  invalidateProgressCache(userId);
 
   if (currentLevel < 5 && newLevel === 5) {
     const statsRef = userStatsRef(userId);
@@ -125,6 +156,7 @@ export async function demoteWord(
     status: "learned",
     lastReviewed: new Date().toISOString(),
   }, { merge: true });
+  invalidateProgressCache(userId);
 
   if (currentLevel === 5 && newLevel < 5) {
     const statsRef = userStatsRef(userId);
@@ -140,32 +172,20 @@ export async function demoteWord(
 
 // Lấy tất cả wordId đã có trong progress (trừ "stats") — bao gồm cả "new"
 export async function getLearnedWordIds(userId: string): Promise<Set<string>> {
-  const snap = await getDocs(userProgressCollection(userId));
-  return new Set(
-    snap.docs
-      .filter((d) => d.id !== "stats")
-      .map((d) => d.id)
-  );
+  const docs = await fetchUserProgressDocs(userId);
+  return new Set(docs.filter((d) => d.id !== "stats").map((d) => d.id));
 }
 
 // Chỉ lấy wordId có status = "learned" (đã hoàn thành buổi học lần đầu)
 export async function getLearnedOnlyWordIds(userId: string): Promise<Set<string>> {
-  const snap = await getDocs(userProgressCollection(userId));
-  return new Set(
-    snap.docs
-      .filter((d) => d.id !== "stats" && d.data().status === "learned")
-      .map((d) => d.id)
-  );
+  const docs = await fetchUserProgressDocs(userId);
+  return new Set(docs.filter((d) => d.id !== "stats" && d.status === "learned").map((d) => d.id));
 }
 
 // Lấy wordId có status "new" (lưu từ dictionary chưa học)
 export async function getNewSavedWordIds(userId: string): Promise<Set<string>> {
-  const snap = await getDocs(userProgressCollection(userId));
-  return new Set(
-    snap.docs
-      .filter((d) => d.id !== "stats" && d.data().status === "new")
-      .map((d) => d.id)
-  );
+  const docs = await fetchUserProgressDocs(userId);
+  return new Set(docs.filter((d) => d.id !== "stats" && d.status === "new").map((d) => d.id));
 }
 
 // Lấy số từ ở mỗi mức SR — CHỈ đếm từ có vocabulary tương ứng (tránh orphan inflate stats)
@@ -174,18 +194,16 @@ export async function getSRStats(
 ): Promise<Record<number, number>> {
   const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
-  // Dùng vocabCache thay vì đọc lại Firestore vocabulary một lần nữa
-  const [allVocab, snap] = await Promise.all([
+  const [allVocab, docs] = await Promise.all([
     getAllVocabulary(),
-    getDocs(userProgressCollection(userId)),
+    fetchUserProgressDocs(userId),
   ]);
   const vocabIds = new Set(allVocab.map((v) => v.id));
 
-  snap.forEach((d) => {
+  docs.forEach((d) => {
     if (d.id === "stats") return;
-    // Bỏ qua orphan progress docs (vocabulary đã bị xóa hoặc re-import)
     if (!vocabIds.has(d.id)) return;
-    const level = Number(d.data().srLevel || 0);
+    const level = d.srLevel;
     if (level >= 1 && level <= 5) stats[level]++;
   });
   return stats;
@@ -198,23 +216,21 @@ export async function getDueWords(
 ): Promise<DueWordProgress[]> {
   const now = new Date().toISOString();
 
-  // Dùng cache để tránh đọc lại vocabulary khi không cần
-  const [allVocab, progressSnap] = await Promise.all([
+  const [allVocab, docs] = await Promise.all([
     getAllVocabulary(),
-    getDocs(userProgressCollection(userId)),
+    fetchUserProgressDocs(userId),
   ]);
   const vocabIds = new Set(allVocab.map((v) => v.id));
 
-  return progressSnap.docs
+  return docs
     .filter((d) => {
       if (d.id === "stats") return false;
       if (!vocabIds.has(d.id)) return false;
-      const data = d.data();
-      if (data.status !== "learned") return false;
-      const nextReview = data.nextReview;
+      if (d.status !== "learned") return false;
+      const nextReview = d.nextReview;
       return !nextReview || nextReview <= now;
     })
-    .map((d) => ({ id: d.id, ...d.data() } as DueWordProgress))
+    .map((d) => ({ ...d } as DueWordProgress))
     .slice(0, limitCount);
 }
 
@@ -233,26 +249,61 @@ export async function getDueWordsWithVocab(
 ): Promise<DueWordsResult> {
   const now = new Date().toISOString();
 
-  // Đọc song song: vocabulary (cache) + progress user
-  const [allVocab, progressSnap] = await Promise.all([
+  const [allVocab, docs] = await Promise.all([
     getAllVocabulary(),
-    getDocs(userProgressCollection(userId)),
+    fetchUserProgressDocs(userId),
   ]);
   const vocabIds = new Set(allVocab.map((v) => v.id));
 
-  const dueWords = progressSnap.docs
+  const dueWords = docs
     .filter((d) => {
       if (d.id === "stats") return false;
       if (!vocabIds.has(d.id)) return false;
-      const data = d.data();
-      if (data.status !== "learned") return false;
-      const nextReview = data.nextReview;
+      if (d.status !== "learned") return false;
+      const nextReview = d.nextReview;
       return !nextReview || nextReview <= now;
     })
-    .map((d) => ({ id: d.id, ...d.data() } as DueWordProgress))
+    .map((d) => ({ ...d } as DueWordProgress))
     .slice(0, limitCount);
 
   return { dueWords, allVocab };
+}
+
+/**
+ * Hàm mới gộp cho Dashboard: Tính SRStats & đếm dueWords chỉ trong 1 lần đọc progress docs.
+ */
+export async function getDashboardSummary(userId: string): Promise<{
+  srStats: Record<number, number>;
+  dueCount: number;
+}> {
+  const now = new Date().toISOString();
+  const [allVocab, docs] = await Promise.all([
+    getAllVocabulary(),
+    fetchUserProgressDocs(userId),
+  ]);
+  const vocabIds = new Set(allVocab.map((v) => v.id));
+
+  const srStats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let dueCount = 0;
+
+  docs.forEach((d) => {
+    if (d.id === "stats") return;
+    if (!vocabIds.has(d.id)) return;
+
+    // SR Stats
+    const level = d.srLevel;
+    if (level >= 1 && level <= 5) srStats[level]++;
+
+    // Due Words Count
+    if (d.status === "learned") {
+      const nextReview = d.nextReview;
+      if (!nextReview || nextReview <= now) {
+        dueCount++;
+      }
+    }
+  });
+
+  return { srStats, dueCount };
 }
 
 // ===== PROGRESS & STREAK =====
@@ -378,28 +429,23 @@ export type UserWordStatus = {
 export async function getUserWordStatuses(
   userId: string
 ): Promise<UserWordStatus[]> {
-  // Đọc song song: progress + vocabulary (từ cache)
-  const [progressSnap, allVocab] = await Promise.all([
-    getDocs(userProgressCollection(userId)),
+  const [docs, allVocab] = await Promise.all([
+    fetchUserProgressDocs(userId),
     getAllVocabulary(),
   ]);
 
-  const progressData = progressSnap.docs
+  const progressData = docs
     .filter((d) => d.id !== "stats")
-    .map((d) => {
-      const data = d.data();
-      return {
-        wordId: data.wordId || d.id,
-        srLevel: data.srLevel || 0,
-        nextReview: data.nextReview || null,
-        status: data.status || "new",
-        lastReviewed: data.lastReviewed || null,
-      } as WordProgress;
-    });
+    .map((d) => ({
+      wordId: d.wordId || d.id,
+      srLevel: d.srLevel || 0,
+      nextReview: d.nextReview || null,
+      status: (d.status || "new") as "new" | "learned",
+      lastReviewed: d.lastReviewed || null,
+    }));
 
   if (progressData.length === 0) return [];
 
-  // Dùng vocab từ cache thay vì đọc lại Firestore
   const vocabMap = new Map<string, CachedVocabItem>();
   allVocab.forEach((v) => vocabMap.set(v.id, v));
 
