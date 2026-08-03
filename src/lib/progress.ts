@@ -176,10 +176,35 @@ export async function getLearnedWordIds(userId: string): Promise<Set<string>> {
   return new Set(docs.filter((d) => d.id !== "stats").map((d) => d.id));
 }
 
-// Chỉ lấy wordId có status = "learned" (đã hoàn thành buổi học lần đầu)
+// Chỉ lấy wordId có status = "learned" (bao gồm cả các từ trùng ở khóa khác)
 export async function getLearnedOnlyWordIds(userId: string): Promise<Set<string>> {
-  const docs = await fetchUserProgressDocs(userId);
-  return new Set(docs.filter((d) => d.id !== "stats" && d.status === "learned").map((d) => d.id));
+  const [docs, allVocab] = await Promise.all([
+    fetchUserProgressDocs(userId),
+    getAllVocabulary(),
+  ]);
+
+  // Tập hợp các ID đã có progress "learned" trực tiếp
+  const directLearnedIds = new Set(
+    docs.filter((d) => d.id !== "stats" && d.status === "learned").map((d) => d.id)
+  );
+
+  // Tạo tập hợp các chữ từ vựng (chữ Nhật như "お土産") đã được học
+  const learnedWordTexts = new Set<string>();
+  allVocab.forEach((v) => {
+    if (directLearnedIds.has(v.id) && v.word) {
+      learnedWordTexts.add(v.word);
+    }
+  });
+
+  // Mở rộng kết quả: bất kỳ vocab ID nào có chữ Nhật thuộc learnedWordTexts cũng được coi là đã học
+  const resultSet = new Set<string>(directLearnedIds);
+  allVocab.forEach((v) => {
+    if (v.word && learnedWordTexts.has(v.word)) {
+      resultSet.add(v.id);
+    }
+  });
+
+  return resultSet;
 }
 
 // Lấy wordId có status "new" (lưu từ dictionary chưa học)
