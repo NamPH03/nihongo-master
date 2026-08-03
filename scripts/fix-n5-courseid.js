@@ -36,17 +36,14 @@ async function main() {
 
   // Lấy tất cả document N5 từ vocab collection
   console.log("📦 Đang lấy tất cả vocabulary level N5 từ Firestore...");
-  const snap = await db
-    .collection("vocabulary")
-    .where("level", "==", "N5")
-    .get();
+  const snap = await db.collection("vocabulary").get();
 
   console.log(`📊 Tìm thấy ${snap.size} documents N5 trong Firestore.`);
 
   const badDocs = [];
   snap.forEach((d) => {
     const data = d.data();
-    if (data.courseId !== "jlpt-n5" && data.source === "n5_excel_csv_import") {
+    if (data.courseId !== "jlpt-n5" && data.courseName === "Tiếng Nhật N5 (Sơ cấp 1)") {
       badDocs.push({ id: d.id, oldCourseId: data.courseId });
     }
   });

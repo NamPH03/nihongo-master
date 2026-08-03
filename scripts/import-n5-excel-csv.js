@@ -1,94 +1,70 @@
 // scripts/import-n5-excel-csv.js
-// Script Node.js sử dụng Firebase Admin SDK để ghi trực tiếp từ vựng N5 vào Firestore
-// File Excel: C:\Users\NamPH's PC\Projects\nihongo-master\Vocabulary\N5_vocab\N5_vocab.xlsx
+// Script đọc file Excel N5 và import vào Firestore collection `vocabulary`
+// Dùng Firebase Admin SDK để ghi hàng loạt (batch write).
+//
+// CÁCH CHẠY:
+//   node scripts/import-n5-excel-csv.js --import
 
 const fs = require("fs");
 const path = require("path");
-const XLSX = require("xlsx");
+const xlsx = require("xlsx");
 const dotenv = require("dotenv");
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
-// Nạp biến môi trường từ .env.local
 dotenv.config({ path: ".env.local" });
 
-// Khởi tạo Firebase Admin SDK
-const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-
-if (!privateKey || !clientEmail || !projectId) {
-  console.error("❌ Thiếu cấu hình Firebase Admin SDK trong .env.local!");
-  process.exit(1);
-}
-
-let formattedKey = privateKey;
-if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
-  formattedKey = formattedKey.slice(1, -1);
-}
-formattedKey = formattedKey.replace(/\\n/g, "\n");
+const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "")
+  .replace(/^"/, "").replace(/"$/, "")
+  .replace(/\\n/g, "\n");
 
 const adminApp =
   getApps().length === 0
     ? initializeApp({
         credential: cert({
-          projectId,
-          clientEmail,
-          privateKey: formattedKey,
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey,
         }),
       })
     : getApps()[0];
 
 const db = getFirestore(adminApp);
 
-function parseCSVLine(line) {
+function parseCSVLine(text) {
   const result = [];
-  let current = "";
+  let cur = "";
   let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
     if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
+      inQuotes = !inQuotes;
     } else if (char === "," && !inQuotes) {
-      result.push(current.trim());
-      current = "";
+      result.push(cur.trim());
+      cur = "";
     } else {
-      current += char;
+      cur += char;
     }
   }
-  result.push(current.trim());
+  result.push(cur.trim());
   return result;
 }
 
-function makeWordId(word, level, lessonId) {
-  const cleanWord = word.replace(/[^\w\u3000-\u9fff\u30a0-\u30ff\u3040-\u309f]/g, "_");
-  const suffix = lessonId ? `_${lessonId}` : "";
-  return `${level}_${cleanWord}${suffix}`;
-}
-
 async function main() {
-  const filePath = path.join(process.cwd(), "Vocabulary", "N5_vocab", "N5_vocab.xlsx");
-  if (!fs.existsSync(filePath)) {
-    console.error(`❌ Không tìm thấy file Excel tại: ${filePath}`);
+  const excelPath = path.join(
+    __dirname,
+    "../Vocabulary/N5_vocab/N5_vocab.xlsx"
+  );
+  if (!fs.existsSync(excelPath)) {
+    console.error("❌ Không tìm thấy file Excel:", excelPath);
     process.exit(1);
   }
 
-  console.log(`📖 Đang đọc file: ${filePath}`);
-  const workbook = XLSX.readFile(filePath);
+  console.log("📖 Đang đọc file:", excelPath);
+  const workbook = xlsx.readFile(excelPath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-
-  const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-  if (rawRows.length <= 1) {
-    console.error("❌ File không có dữ liệu!");
-    process.exit(1);
-  }
+  const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
   const parsedVocabList = [];
 
@@ -97,33 +73,38 @@ async function main() {
     if (!rawLine || typeof rawLine !== "string" || rawLine.trim() === "") continue;
 
     let fields = parseCSVLine(rawLine);
+    if (fields.length < 9) continue;
 
-    // Xử lý trường hợp thiếu cột reading (từ Katakana như パート)
-    if (fields.length === 9) {
-      fields.splice(1, 0, fields[0]);
+    // Cấu trúc cột tiêu chuẩn từ file CSV:
+    // [0] word, [1] reading, [2] meaning, [3] type, [4] level, [5] example, [6] exampleMeaning, [7] courseId, [8] lessonId, [9...] lessonTitle (có thể bị split nếu title chứa phẩy)
+    const word = fields[0];
+    let reading = fields[1];
+    let meaning = fields[2];
+    let type = fields[3];
+    let level = fields[4];
+    let example = fields[5];
+
+    // Lấy lessonId bằng regex tìm "lesson-xx" từ các trường phía sau
+    let lessonId = "";
+    let lessonIdIdx = -1;
+    for (let j = 6; j < fields.length; j++) {
+      if (fields[j] && fields[j].startsWith("lesson-")) {
+        lessonId = fields[j];
+        lessonIdIdx = j;
+        break;
+      }
     }
 
-    if (fields.length < 10) continue;
+    if (!lessonId || lessonIdIdx === -1) continue;
 
-    // === RIGHT-ANCHORED PARSING ===
-    // Một số câu ví dụ/nghĩa tiếng Việt chứa dấu phẩy làm tăng số cột.
-    // Giải pháp: lấy 3 trường ổn định từ phải (courseId, lessonId, lessonTitle),
-    // rồi rejoin phần còn lại ở giữa cho exampleMeaning.
-    const word        = fields[0];
-    const reading     = fields[1];
-    // type và level không có dấu phẩy, nằm ở vị trí cố định từ trái
-    const type        = fields[3];
-    const level       = fields[4];
-    const example     = fields[5]; // tiếng Nhật, không có dấu phẩy ASCII
-    // Từ phải: courseId (-3), lessonId (-2), lessonTitle (-1)
-    const lessonTitle     = fields[fields.length - 1];
-    const lessonId        = fields[fields.length - 2];
-    const courseId        = fields[fields.length - 3];
-    // meaning nằm ở fields[2], exampleMeaning là tất cả phần còn lại giữa example và courseId
-    const meaning         = fields[2];
-    const exampleMeaning  = fields.slice(6, fields.length - 3).join(",");
+    // lessonTitle là tất cả phần sau lessonId
+    const lessonTitle = fields.slice(lessonIdIdx + 1).join(", ");
 
-    if (!word) continue;
+    // exampleMeaning là tất cả phần giữa example và courseId (fields[lessonIdIdx - 1])
+    const exampleMeaning = fields.slice(6, lessonIdIdx - 1).join(", ");
+    const courseId = "jlpt-n5";
+
+    if (!word || word === "word") continue;
 
     parsedVocabList.push({
       word,
@@ -133,17 +114,22 @@ async function main() {
       level: (level || "N5").toUpperCase(),
       example: example || "",
       exampleMeaning: exampleMeaning || "",
-      courseId: courseId || "jlpt-n5",
+      courseId: "jlpt-n5",
       courseName: "Tiếng Nhật N5 (Sơ cấp 1)",
-      lessonId: lessonId || "",
-      lessonTitle: lessonTitle || "",
+      lessonId,
+      lessonTitle: lessonTitle || lessonId,
       source: "n5_excel_csv_import",
-      updatedAt: new Date(),
     });
   }
 
-  console.log(`🚀 Đang cập nhật courseName và lessonTitle cho ${parsedVocabList.length} từ vựng...`);
+  console.log(`📊 Tìm thấy tổng cộng ${parsedVocabList.length} từ vựng từ Excel.\n`);
 
+  if (!process.argv.includes("--import")) {
+    console.log("ℹ️ Thêm cờ --import để tiến hành ghi vào Firestore.");
+    process.exit(0);
+  }
+
+  console.log("🚀 Đang tiến hành ghi hàng loạt vào Firestore...");
   const BATCH_SIZE = 400;
   let successCount = 0;
 
@@ -152,20 +138,23 @@ async function main() {
     const batch = db.batch();
 
     for (const item of chunk) {
-      const docId = makeWordId(item.word, item.level, item.lessonId);
+      // Document ID cố định theo word + lessonId để tránh trùng lặp
+      const docId = `N5_${item.word.replace(/\//g, "_")}_${item.lessonId}`;
       const docRef = db.collection("vocabulary").doc(docId);
       batch.set(docRef, item, { merge: true });
     }
 
     await batch.commit();
     successCount += chunk.length;
+    console.log(`   ⚡ Đã ghi [${successCount}/${parsedVocabList.length}] từ vựng...`);
   }
 
-  console.log(`✅ Hoàn tất cập nhật ${successCount} từ!`);
-  process.exit(0);
+  console.log("\n=======================================================");
+  console.log(`🎉 Hoàn tất! Đã ghi ${successCount} từ vựng N5 vào Firestore.`);
+  console.log("=======================================================\n");
 }
 
 main().catch((err) => {
-  console.error("❌ Lỗi Script:", err);
+  console.error("❌ Lỗi:", err);
   process.exit(1);
 });

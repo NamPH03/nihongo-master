@@ -57,7 +57,7 @@ export default function CoursePage() {
         courseVocab.forEach((v) => {
           if (!firstName) firstName = String(v.courseName || courseId);
           const lId = String(v.lessonId || "Bài chưa gán").trim();
-          const lTitle = String(lId || "Bài chưa gán").trim();
+          const lTitle = String(v.lessonTitle || v.lessonId || "Bài chưa gán").trim();
           if (!lessonMap.has(lId)) {
             lessonMap.set(lId, { title: lTitle, wordIds: [] });
           }
