@@ -1,6 +1,6 @@
 // src/app/api/cron/notify/route.ts
-// Vercel Cron Job — chạy 2 lần/ngày theo lịch trong vercel.json
-// Kiểm tra từng user → gửi push notification phù hợp
+// Smart Push Notification Engine — Hỗ trợ Cron chạy hàng giờ hoặc Vercel Cron
+// Áp dụng: Smart Time Window, Cooldown 8 tiếng, Quota-Saving Early Exit
 
 export const dynamic = 'force-dynamic';
 
@@ -10,75 +10,89 @@ import { getAdminDb, getAdminMessaging } from '@/lib/firebase-admin';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// ===== HELPERS =====
+// ===== HELPERS & TIME WINDOWS =====
 
-function getTodayVN(): string {
-  // UTC+7
-  const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return now.toISOString().split('T')[0];
+function getVNTimeInfo() {
+  const nowUtc = Date.now();
+  const vnOffset = 7 * 60 * 60 * 1000;
+  const vnDate = new Date(nowUtc + vnOffset);
+  const hour = vnDate.getUTCHours();
+  const dateStr = vnDate.toISOString().split('T')[0];
+  return { dateStr, hour, timestamp: nowUtc };
 }
 
-function getDaysSinceLastStudy(lastStudyDate: string): number {
-  // Nếu chưa có lastStudyDate → trả về -1 (không gửi nhắc học)
-  // Tránh bug "999 ngày" khi user chưa học lần nào hoặc field chưa được sync
+function getDaysSinceLastStudy(lastStudyDate: string, todayVN: string): number {
   if (!lastStudyDate) return -1;
-  const todayVN = getTodayVN();
   const todayMs = new Date(todayVN).getTime();
   const lastMs = new Date(lastStudyDate).getTime();
   const diff = Math.floor((todayMs - lastMs) / (1000 * 60 * 60 * 24));
   return Math.max(diff, 0);
 }
 
+function getReviewReminderMessage(dueCount: number, dueWordsSample: string[]): { title: string; body: string } {
+  if (dueWordsSample.length > 0) {
+    const sampleStr = dueWordsSample.slice(0, 2).join(', ');
+    return {
+      title: `🧠 Trí nhớ dài hạn: Ôn lại ${dueCount} từ vựng!`,
+      body: `Các từ như [ ${sampleStr} ] sắp bị quên. Dành 3 phút ôn ngay nào!`,
+    };
+  }
+  return {
+    title: `📚 ${dueCount} từ vựng đang chờ bạn ôn tập!`,
+    body: 'Quên từ vựng theo thời gian là tự nhiên. Ôn ngay để chuyển vào trí nhớ dài hạn nhé!',
+  };
+}
+
+function getStreakProtectionMessage(streak: number): { title: string; body: string } {
+  if (streak > 0) {
+    return {
+      title: `🔥 Đừng để mất chuỗi ${streak} ngày học!`,
+      body: 'Chỉ còn vài tiếng nữa là hết ngày. Học 1 bài ngắn để giữ vững phong độ nhé!',
+    };
+  }
+  return {
+    title: '🌙 Dành 5 phút trước khi đi ngủ!',
+    body: 'Học vài từ vựng nhẹ nhàng giúp não bộ ghi nhớ sâu hơn trong giấc ngủ.',
+  };
+}
+
 function getStudyReminderMessage(days: number): { title: string; body: string } | null {
-  if (days < 1) return null; // Đã học hôm nay
+  if (days < 1) return null;
 
   if (days === 1)
     return {
-      title: '📚 Nhắc học tiếng Nhật!',
-      body: 'Bạn chưa học hôm nay. Chỉ 5 phút thôi, vào học ngay nào!',
+      title: '🌸 Khởi động ngày mới với vài từ vựng!',
+      body: 'Chưa thấy bạn học hôm nay. Mở app nạp thêm kiến thức mới thôi nào!',
     };
 
   if (days === 2)
     return {
-      title: '😟 2 ngày chưa học rồi!',
-      body: 'Đừng để kiến thức bốc hơi — vào ôn vài từ nhé!',
+      title: '😟 2 ngày rồi bạn chưa quay lại!',
+      body: 'Đừng để kiến thức bốc hơi — vào ôn 5 từ ngắn gọn nhé!',
     };
 
   if (days === 3)
     return {
-      title: '😰 Streak đang nguy hiểm!',
-      body: '3 ngày không học rồi. Quay lại ngay trước khi quên hết!',
+      title: '😰 Kiến thức sắp bị trôi mất!',
+      body: '3 ngày không học rồi. Quay lại ngay trước khi quên hết từ vựng!',
     };
 
-  if (days === 5)
+  if (days >= 5)
     return {
-      title: '💀 5 ngày bỏ học rồi!',
-      body: 'Từ vựng sắp bốc hơi hết. Học ngay thôi, đừng để muộn hơn!',
-    };
-
-  if (days >= 7)
-    return {
-      title: `🚨 ${days} ngày không động tiếng Nhật!`,
-      body: 'Quay lại đây! Chỉ 1 từ thôi cũng được, đừng bỏ cuộc nhé.',
+      title: `🚨 ${days} ngày chưa chạm vào Tiếng Nhật!`,
+      body: 'Chỉ 1 bài học ngắn thôi cũng giúp bạn duy trì cảm giác ngôn ngữ.',
     };
 
   return {
     title: `📅 ${days} ngày chưa học!`,
-    body: `Đã ${days} ngày rồi. Dành vài phút ôn tập hôm nay nhé!`,
-  };
-}
-
-function getReviewReminderMessage(dueCount: number): { title: string; body: string } {
-  return {
-    title: '⏰ Đến giờ ôn tập rồi!',
-    body: `Bạn có ${dueCount} từ đang chờ ôn tập. Ôn ngay để không quên nhé!`,
+    body: `Đã ${days} ngày trôi qua. Dành vài phút ôn tập hôm nay nhé!`,
   };
 }
 
 // ===== MAIN CRON HANDLER =====
 
 export async function GET(req: NextRequest) {
-  // Bảo vệ endpoint — chỉ Vercel Cron hoặc request có secret mới được gọi
+  // 1. Kiểm tra xác thực
   const authHeader = req.headers.get('authorization');
   const secretParam = req.nextUrl.searchParams.get('secret');
   const cronSecret = process.env.CRON_SECRET;
@@ -90,13 +104,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const now = new Date().toISOString();
-  const todayVN = getTodayVN();
+  const { dateStr: todayVN, hour: currentHourVN, timestamp: nowMs } = getVNTimeInfo();
+  const nowIso = new Date().toISOString();
+
+  // 2. CRITICAL QUOTA SAVER: EARLY EXIT
+  // Nếu không phải 3 khung giờ vàng (Sáng 7-9h, Tối 18-20h, Đêm 21-23h) -> Thoát ngay lập tức (0 READS FIRESTORE!)
+  const isMorningWindow = currentHourVN >= 7 && currentHourVN <= 9;
+  const isEveningWindow = currentHourVN >= 18 && currentHourVN <= 20;
+  const isNightWindow = currentHourVN >= 21 && currentHourVN <= 23;
+
+  if (!isManualTest && !isMorningWindow && !isEveningWindow && !isNightWindow) {
+    return NextResponse.json({
+      success: true,
+      message: `[0 Reads] Khung giờ ${currentHourVN}h VN ngoài giờ gửi. Skip để bảo vệ Firebase Read Quota.`,
+      skipped: true,
+      readsUsed: 0,
+    });
+  }
 
   const adminDb = getAdminDb();
   const adminMessaging = getAdminMessaging();
 
-  // Lấy tất cả FCM tokens (bọc try-catch phòng trường hợp thiếu collectionGroup Index trên Firestore)
   const userTokens: Record<string, string[]> = {};
   let tokensSnap: FirebaseFirestore.QuerySnapshot | null = null;
 
@@ -113,7 +141,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error('[cron/notify] Fallback collectionGroup query failed:', e);
-    // Fallback: Duyệt danh sách users trực tiếp nếu collectionGroup query bị lỗi index
     const usersSnap = await adminDb.collection('users').get();
     for (const uDoc of usersSnap.docs) {
       const uTokensSnap = await uDoc.ref.collection('fcmTokens').get();
@@ -131,86 +158,87 @@ export async function GET(req: NextRequest) {
   let totalSent = 0;
   const errors: string[] = [];
 
-  // Đếm số từ đến hạn ôn tập cho từng user (giảm 3135 reads/lần xuống 0 read từ vựng)
+  const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
+
   for (const userId of userIds) {
     const tokens = userTokens[userId];
 
     try {
-      // Đọc stats học tập
-      const statsSnap = await adminDb.doc(`users/${userId}/progress/stats`).get();
-      const stats = statsSnap.data() || {};
-
-      // Đọc trạng thái notification (tránh spam)
+      // 3. Check Cooldown trước khi đọc dữ liệu từ vựng nặng
       const notifStateRef = adminDb.doc(`users/${userId}/notificationState/data`);
       const notifStateSnap = await notifStateRef.get();
       const notifState = notifStateSnap.data() || {};
 
-      // Đếm số từ đến hạn ôn tập
-      const progressSnap = await adminDb.collection(`users/${userId}/progress`).get();
-      let dueCount = 0;
-      progressSnap.forEach((doc) => {
-        if (doc.id === 'stats') return;
+      const lastSentTime = notifState.lastSentTimestamp || 0;
+      if (!isManualTest && nowMs - lastSentTime < EIGHT_HOURS_MS) {
+        continue; // Bỏ qua ngay, không đọc progress collection!
+      }
+
+      // 4. Đọc Thống kê học tập
+      const statsSnap = await adminDb.doc(`users/${userId}/progress/stats`).get();
+      const stats = statsSnap.data() || {};
+      const streak = stats.streakCount || 0;
+      const lastStudyDate = stats.lastStudyDate || stats.lastReviewDate || '';
+      const daysSince = getDaysSinceLastStudy(lastStudyDate, todayVN);
+      const studiedToday = daysSince === 0;
+
+      // 5. Đếm số từ đến hạn SRS (Tối ưu: Chỉ đếm các doc thỏa điều kiện nextReview <= now)
+      // Dùng query lọc trực tiếp thay vì get() toàn bộ progress
+      const dueQuerySnap = await adminDb
+        .collection(`users/${userId}/progress`)
+        .where('status', '==', 'learned')
+        .where('nextReview', '<=', nowIso)
+        .get();
+
+      const dueCount = dueQuerySnap.size;
+      const dueWordsSample: string[] = [];
+
+      dueQuerySnap.docs.slice(0, 3).forEach((doc) => {
         const data = doc.data();
-        if (data.status !== 'learned') return;
-        if (!data.nextReview || data.nextReview <= now) dueCount++;
+        if (data.kanji) dueWordsSample.push(data.kanji);
+        else if (data.word) dueWordsSample.push(data.word);
       });
 
       const stateUpdates: Record<string, unknown> = {};
       let notification: { title: string; body: string } | null = null;
       let notifUrl = '/dashboard';
 
-      // --- Ưu tiên 1: Nhắc ôn tập (milestone-based) ---
-      if (dueCount > 0) {
-        let lastNotifiedCount: number = notifState.lastNotifiedDueCount || 0;
+      // ===== PRIORITY MATRIX =====
 
-        // Nếu user đã ôn bớt từ (dueCount giảm), reset để đếm lại từ đầu
-        if (dueCount < lastNotifiedCount) {
-          stateUpdates.lastNotifiedDueCount = 0;
-          lastNotifiedCount = 0;
+      if (isNightWindow || (isManualTest && !studiedToday && streak > 0)) {
+        if (!studiedToday) {
+          notification = getStreakProtectionMessage(streak);
+          notifUrl = '/dashboard';
         }
+      }
 
-        // Milestone logic:
-        // - Khi dueCount < 10: thông báo mỗi khi số từ tăng (để test & số nhỏ)
-        // - Khi dueCount >= 10: chỉ thông báo khi vượt bội của 10 (10, 20, 30...)
-        const lastMilestone = Math.floor(lastNotifiedCount / 10);
-        const currentMilestone = Math.floor(dueCount / 10);
-
-        const shouldNotify =
-          (dueCount < 10 && dueCount > lastNotifiedCount) ||
-          (dueCount >= 10 && currentMilestone > lastMilestone);
-
-        if (shouldNotify) {
-          notification = getReviewReminderMessage(dueCount);
+      if (!notification && dueCount >= 3) {
+        const lastNotifiedDueCount = notifState.lastNotifiedDueCount || 0;
+        if (dueCount > lastNotifiedDueCount || !notifState.lastReviewNotifiedDate) {
+          notification = getReviewReminderMessage(dueCount, dueWordsSample);
           stateUpdates.lastNotifiedDueCount = dueCount;
+          stateUpdates.lastReviewNotifiedDate = todayVN;
           notifUrl = '/review';
         }
       }
 
-      // Reset counter khi không còn từ đến hạn
-      if (dueCount === 0 && (notifState.lastNotifiedDueCount || 0) > 0) {
-        stateUpdates.lastNotifiedDueCount = 0;
-      }
-
-      // --- Ưu tiên 2: Nhắc học (nếu chưa gửi nhắc ôn tập hôm nay) ---
-      if (!notification) {
-        // Ưu tiên dùng lastStudyDate, fallback sang lastReviewDate (nếu có)
-        const lastStudyDate: string = stats.lastStudyDate || stats.lastReviewDate || '';
-        const daysSince = getDaysSinceLastStudy(lastStudyDate);
-        const lastReminderDate: string = notifState.lastStudyReminderDate || '';
-
-        // daysSince >= 1: chưa học hôm nay; -1: chưa bao giờ học → không nhắc
-        if (daysSince >= 1 && lastReminderDate !== todayVN) {
+      if (!notification && !studiedToday && daysSince >= 1) {
+        const lastStudyReminderDate = notifState.lastStudyReminderDate || '';
+        if (lastStudyReminderDate !== todayVN) {
           notification = getStudyReminderMessage(daysSince);
           stateUpdates.lastStudyReminderDate = todayVN;
           notifUrl = '/dashboard';
         }
       }
 
-      // --- Gửi notification ---
+      if (dueCount === 0 && (notifState.lastNotifiedDueCount || 0) > 0) {
+        stateUpdates.lastNotifiedDueCount = 0;
+      }
+
+      // ===== GỬI PUSH NOTIFICATION =====
       if (notification && tokens.length > 0) {
         const result = await adminMessaging.sendEachForMulticast({
           tokens,
-          // Sử dụng data-only payload để service worker tự render qua showNotification giống test-notify/route.ts
           data: {
             title: notification.title,
             body: notification.body,
@@ -218,7 +246,6 @@ export async function GET(req: NextRequest) {
           },
         });
 
-        // Xoá tokens hết hạn / không hợp lệ
         const invalidTokenKeys: Promise<FirebaseFirestore.WriteResult>[] = [];
         result.responses.forEach((resp, idx) => {
           if (
@@ -226,7 +253,6 @@ export async function GET(req: NextRequest) {
             (resp.error?.code === 'messaging/registration-token-not-registered' ||
               resp.error?.code === 'messaging/invalid-registration-token')
           ) {
-            // Tìm doc key để xoá nếu tokensSnap khả dụng
             if (tokensSnap) {
               tokensSnap.forEach((doc) => {
                 if (doc.ref.parent.parent?.id === userId && doc.data().token === tokens[idx]) {
@@ -238,10 +264,12 @@ export async function GET(req: NextRequest) {
         });
         await Promise.all(invalidTokenKeys);
 
-        if (result.successCount > 0) totalSent++;
+        if (result.successCount > 0) {
+          totalSent++;
+          stateUpdates.lastSentTimestamp = nowMs;
+        }
       }
 
-      // Lưu trạng thái mới nếu có thay đổi
       if (Object.keys(stateUpdates).length > 0) {
         await notifStateRef.set(stateUpdates, { merge: true });
       }
@@ -254,9 +282,11 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    time: now,
+    time: nowIso,
+    hourVN: currentHourVN,
     usersProcessed: userIds.length,
     notificationsSent: totalSent,
     errors: errors.length > 0 ? errors : undefined,
   });
 }
+
