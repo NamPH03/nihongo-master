@@ -19,6 +19,7 @@ export type CachedVocabItem = {
   exampleMeaning?: string;
   courseId?: string;
   lessonId?: string;
+  lessonTitle?: string;
   courseName?: string;
   source?: string;
 };
@@ -81,6 +82,7 @@ export async function getAllVocabulary(): Promise<CachedVocabItem[]> {
       exampleMeaning: v.exampleMeaning || "",
       courseId: v.courseId || "",
       lessonId: v.lessonId || "",
+      lessonTitle: v.lessonTitle || "",
       courseName: v.courseName || "",
       source: v.source || "",
     };
