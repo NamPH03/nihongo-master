@@ -98,24 +98,30 @@ async function main() {
 
     let fields = parseCSVLine(rawLine);
 
+    // Xử lý trường hợp thiếu cột reading (từ Katakana như パート)
     if (fields.length === 9) {
       fields.splice(1, 0, fields[0]);
     }
 
     if (fields.length < 10) continue;
 
-    const [
-      word,
-      reading,
-      meaning,
-      type,
-      level,
-      example,
-      exampleMeaning,
-      courseId,
-      lessonId,
-      lessonTitle,
-    ] = fields;
+    // === RIGHT-ANCHORED PARSING ===
+    // Một số câu ví dụ/nghĩa tiếng Việt chứa dấu phẩy làm tăng số cột.
+    // Giải pháp: lấy 3 trường ổn định từ phải (courseId, lessonId, lessonTitle),
+    // rồi rejoin phần còn lại ở giữa cho exampleMeaning.
+    const word        = fields[0];
+    const reading     = fields[1];
+    // type và level không có dấu phẩy, nằm ở vị trí cố định từ trái
+    const type        = fields[3];
+    const level       = fields[4];
+    const example     = fields[5]; // tiếng Nhật, không có dấu phẩy ASCII
+    // Từ phải: courseId (-3), lessonId (-2), lessonTitle (-1)
+    const lessonTitle     = fields[fields.length - 1];
+    const lessonId        = fields[fields.length - 2];
+    const courseId        = fields[fields.length - 3];
+    // meaning nằm ở fields[2], exampleMeaning là tất cả phần còn lại giữa example và courseId
+    const meaning         = fields[2];
+    const exampleMeaning  = fields.slice(6, fields.length - 3).join(",");
 
     if (!word) continue;
 
