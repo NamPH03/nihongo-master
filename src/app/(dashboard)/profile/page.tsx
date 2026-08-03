@@ -98,6 +98,9 @@ export default function ProfilePage() {
       return;
     }
 
+    // Reset file input ngay để có thể chọn lại cùng file sau này
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
     setUploading(true);
     try {
       // 1. Tạo Storage reference: avatars/{uid}
@@ -114,7 +117,7 @@ export default function ProfilePage() {
         photoURL: downloadURL
       });
       
-      // 5. Cập nhật state UI
+      // 5. Cập nhật state UI trực tiếp (Navbar cũng tự cập nhật qua onSnapshot)
       setPhotoURL(downloadURL);
     } catch (err) {
       console.error("Lỗi tải ảnh lên Firebase:", err);
