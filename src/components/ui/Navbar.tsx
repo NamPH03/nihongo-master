@@ -77,24 +77,15 @@ export default function Navbar({}: NavbarProps) {
 
   return (
     <>
-      {/* Safe-area spacer: phủ kín vùng status bar iPhone bằng màu đục, không nội dung */}
-      <div
-        className="fixed top-0 left-0 right-0 z-50"
-        style={{
-          height: "env(safe-area-inset-top)",
-          background: "var(--surface)",
-        }}
-      />
-
-      {/* Top Navbar cố định ngay bên dưới safe-area */}
+      {/* Top Navbar: fixed top-0, paddingTop phủ safe-area status bar */}
       <nav
-        className="navbar border-b fixed left-0 right-0 z-40"
+        className="navbar border-b fixed top-0 left-0 right-0 z-40"
         style={{
-          top: "env(safe-area-inset-top)",
           borderColor: "var(--border-color)",
-          background: "var(--nav-bg)",
+          background: "var(--surface)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
+          paddingTop: "env(safe-area-inset-top)",
         }}
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
@@ -161,14 +152,15 @@ export default function Navbar({}: NavbarProps) {
         </div>
       </nav>
 
-      {/* Bottom Navigation Bar (Chỉ hiển thị trên Mobile khi đã đăng nhập) */}
+      {/* Bottom Navigation Bar (Mobile only) */}
       {isLoggedIn && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t"
              style={{ 
                borderColor: "var(--border-color)", 
-               background: "var(--nav-bg)", 
+               background: "var(--surface)", 
                backdropFilter: "blur(12px)",
-               paddingBottom: "calc(env(safe-area-inset-bottom) + 6px)", // Thêm safe area cho iPhone
+               WebkitBackdropFilter: "blur(12px)",
+               paddingBottom: "env(safe-area-inset-bottom)",
              }}>
           <div className="flex justify-around items-center h-16 px-2">
             {mobileLinks.map((link) => {
@@ -196,18 +188,6 @@ export default function Navbar({}: NavbarProps) {
           </div>
         </div>
       )}
-
-      {/* Bù khoảng trống cho fixed Navbar + safe-area trên/dưới */}
-      <style jsx global>{`
-        body {
-          padding-top: calc(env(safe-area-inset-top) + 3.5rem) !important;
-        }
-        @media (max-width: 767px) {
-          body {
-            padding-bottom: calc(env(safe-area-inset-bottom) + 5.2rem) !important;
-          }
-        }
-      `}</style>
     </>
   );
 }

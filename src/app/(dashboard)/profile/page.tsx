@@ -23,6 +23,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
 
   // Đổi mật khẩu
@@ -92,36 +93,41 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file || !currentUser) return;
 
-    // Chỉ nhận các định dạng ảnh
     if (!file.type.startsWith("image/")) {
-      alert("Vui lòng chọn file hình ảnh hợp lệ!");
+      setUploadError("Vui lòng chọn file hình ảnh hợp lệ!");
       return;
     }
 
-    // Reset file input ngay để có thể chọn lại cùng file sau này
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    // File quá lớn > 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError("Ảnh phải nhỏ hơn 5MB!");
+      return;
+    }
 
+    // Reset
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setUploadError("");
     setUploading(true);
+
     try {
-      // 1. Tạo Storage reference: avatars/{uid}
       const fileRef = ref(storage, `avatars/${currentUser.uid}`);
-      
-      // 2. Upload file lên Storage
       const snapshot = await uploadBytes(fileRef, file);
-      
-      // 3. Lấy Download URL
       const downloadURL = await getDownloadURL(snapshot.ref);
-      
-      // 4. Lưu Download URL vào Firestore document users/{uid}
+
       await updateDoc(doc(db, "users", currentUser.uid), {
         photoURL: downloadURL
       });
-      
-      // 5. Cập nhật state UI trực tiếp (Navbar cũng tự cập nhật qua onSnapshot)
+
       setPhotoURL(downloadURL);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Lỗi tải ảnh lên Firebase:", err);
-      alert("Có lỗi xảy ra khi tải ảnh lên, vui lòng thử lại!");
+      const msg = err instanceof Error ? err.message : "Lỗi không xác định";
+      // Firebase Storage permission denied
+      if (msg.includes("unauthorized") || msg.includes("permission")) {
+        setUploadError("Không có quyền upload. Vui lòng liên hệ admin.");
+      } else {
+        setUploadError("Upload thất bại: " + msg);
+      }
     } finally {
       setUploading(false);
     }
@@ -235,6 +241,19 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Lỗi upload ảnh */}
+          {uploadError && (
+            <p className="text-xs px-3 py-1.5 rounded-lg mb-2 text-center"
+              style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
+              {uploadError}
+            </p>
+          )}
+
+          {/* Thông báo upload thành công */}
+          {!uploading && !uploadError && photoURL && (
+            <p className="text-xs text-[var(--primary)] mb-2">✓ Ảnh đại diện đã cập nhật</p>
+          )}
 
           <span className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-faint)] px-2.5 py-0.5 rounded-full bg-neutral-500/10 mb-2">
             Học viên
