@@ -1,6 +1,10 @@
 // src/lib/leaderboard.ts
+// Leaderboard dùng denormalized collection /leaderboard/{uid}
+// Mỗi user có 1 document, được cập nhật sau mỗi buổi học.
+// Đọc leaderboard = đọc N docs (N user) thay vì N×151 như cũ.
+
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 // ===== TYPES =====
 export type LeaderboardEntry = {
@@ -120,7 +124,6 @@ export const BADGES: Record<BadgeId, Badge> = {
 };
 
 // ===== XP CALCULATION =====
-// XP = totalLearned * 10 + streak * 50
 export function calcXP(totalLearned: number, streak: number): number {
   return totalLearned * 10 + streak * 50;
 }
@@ -145,52 +148,65 @@ export function getEarnedBadges(
   return earned;
 }
 
-// ===== FETCH LEADERBOARD =====
-export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
-  // 1. Get all users from "users" collection
-  const usersSnap = await getDocs(collection(db, "users"));
+// ===== PUSH USER SNAPSHOT → /leaderboard/{uid} =====
+// Gọi sau updateProgress() để cập nhật denormalized leaderboard.
+// Chi phí: 1 write duy nhất, không đọc thêm gì.
+export async function pushLeaderboardSnapshot(params: {
+  uid: string;
+  displayName: string;
+  email: string;
+  totalLearned: number;
+  streak: number;
+  masteredCount: number;
+}): Promise<void> {
+  const { uid, displayName, email, totalLearned, streak, masteredCount } = params;
+  const xp = calcXP(totalLearned, streak);
+  const badges = getEarnedBadges(totalLearned, streak, masteredCount);
 
-  const entries: LeaderboardEntry[] = [];
-
-  await Promise.all(
-    usersSnap.docs.map(async (userDoc) => {
-      const uid = userDoc.id;
-      const userData = userDoc.data();
-
-      // 2. Get stats doc for this user
-      const statsRef = doc(db, "users", uid, "progress", "stats");
-      const statsSnap = await getDoc(statsRef);
-      if (!statsSnap.exists()) return;
-
-      const stats = statsSnap.data();
-      const totalLearned = stats.totalLearned || 0;
-      const streak = stats.streak || 0;
-      const masteredCount = stats.masteredCount || 0;
-
-      const xp = calcXP(totalLearned, streak);
-      const badges = getEarnedBadges(totalLearned, streak, masteredCount);
-
-      entries.push({
+  try {
+    await setDoc(
+      doc(db, "leaderboard", uid),
+      {
         uid,
-        displayName:
-          userData.displayName ||
-          userData.email?.split("@")[0] ||
-          "Ẩn danh",
-        email: userData.email || "",
-        streak,
+        displayName: displayName || email.split("@")[0] || "Ẩn danh",
+        email,
         totalLearned,
+        streak,
+        masteredCount,
         xp,
         badges,
-        rank: 0,
-      });
-    })
-  );
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Không crash app nếu leaderboard update lỗi
+  }
+}
 
-  // Sort by XP descending, assign rank
-  entries.sort((a, b) => b.xp - a.xp);
-  entries.forEach((e, i) => {
-    e.rank = i + 1;
+// ===== FETCH LEADERBOARD =====
+// Chỉ đọc collection /leaderboard — mỗi user 1 doc.
+// Tổng reads = số user (thường < 100), không phụ thuộc số từ đã học.
+export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+  const snap = await getDocs(collection(db, "leaderboard"));
+
+  const entries: LeaderboardEntry[] = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      uid: data.uid || d.id,
+      displayName: data.displayName || "Ẩn danh",
+      email: data.email || "",
+      streak: data.streak || 0,
+      totalLearned: data.totalLearned || 0,
+      xp: data.xp || 0,
+      badges: (data.badges as BadgeId[]) || [],
+      rank: 0,
+    };
   });
+
+  // Sắp xếp theo XP giảm dần, gán rank
+  entries.sort((a, b) => b.xp - a.xp);
+  entries.forEach((e, i) => { e.rank = i + 1; });
 
   return entries;
 }

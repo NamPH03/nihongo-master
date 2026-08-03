@@ -43,10 +43,11 @@ service cloud.firestore {
     }
 
     // ===== LEADERBOARD (denormalized cache) =====
-    // Nếu có collection leaderboard riêng thì cho phép đọc
-    match /leaderboard/{entryId} {
+    // Đọc: mọi user đã đăng nhập (để xem bảng xếp hạng)
+    // Ghi: chỉ chính user đó mới được cập nhật snapshot của mình
+    match /leaderboard/{uid} {
       allow read: if request.auth != null;
-      allow write: if false;
+      allow write: if request.auth != null && request.auth.uid == uid;
     }
 
     // ===== USER WORDS (legacy) =====

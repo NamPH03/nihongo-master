@@ -5,6 +5,7 @@ import {
   collection, getDocs
 } from "firebase/firestore";
 import { getAllVocabulary, type CachedVocabItem } from "@/lib/vocabCache";
+import { pushLeaderboardSnapshot } from "@/lib/leaderboard";
 
 // ===== SPACED REPETITION INTERVALS =====
 export const SR_INTERVALS: Record<number, number> = {
@@ -294,7 +295,8 @@ export async function getProgress(userId: string): Promise<ProgressData> {
 
 export async function updateProgress(
   userId: string,
-  wordsLearned: number
+  wordsLearned: number,
+  userMeta?: { displayName?: string; email?: string }
 ): Promise<ProgressData> {
   const ref = userStatsRef(userId);
   const current = await getProgress(userId);
@@ -319,6 +321,19 @@ export async function updateProgress(
   };
 
   await updateDoc(ref, updated);
+
+  // Cập nhật leaderboard snapshot (1 write, không block UI)
+  if (wordsLearned > 0) {
+    pushLeaderboardSnapshot({
+      uid: userId,
+      displayName: userMeta?.displayName || "",
+      email: userMeta?.email || "",
+      totalLearned: updated.totalLearned,
+      streak: updated.streak,
+      masteredCount: (current as ProgressData & { masteredCount?: number }).masteredCount || 0,
+    }).catch(() => {/* silent */});
+  }
+
   return updated;
 }
 

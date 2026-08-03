@@ -198,7 +198,10 @@ export default function StudySession({
     const user = auth.currentUser;
     if (user && currentWord) {
       await markNewWordLearned(user.uid, currentWord.id);
-      await updateProgress(user.uid, 1);
+      await updateProgress(user.uid, 1, {
+        displayName: user.displayName || "",
+        email: user.email || "",
+      });
     }
     setLearnedCount((prev) => prev + 1);
     if (currentIndex + 1 >= sessionWords.length) {
