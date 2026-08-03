@@ -15,7 +15,6 @@ import {
   Sparkles, 
   Repeat, 
   Search, 
-  BarChart2, 
   Trophy,
   BookOpen,
   User
@@ -67,14 +66,13 @@ export default function Navbar({}: NavbarProps) {
     { href: "/leaderboard",  label: "Xếp hạng",   icon: Trophy },
   ];
 
-  // Menu dưới chân trên Mobile — 5 tab chính theo chuẩn HIG (Human Interface Guidelines)
-  // Bỏ “Sổ tay” ra khỏi mobile (vẫn giữ trên Desktop), thêm tab “Cá nhân” để dễ truy cập profile
+  // Menu dưới chân trên Mobile — 5 tab chính (Giống Desktop: Từ điển, Học mới, Ôn tập, Sổ tay, Xếp hạng)
   const mobileLinks = [
     { href: "/dictionary",   label: "Từ điển",   icon: Search },
     { href: "/learn",        label: "Học mới",   icon: Sparkles },
     { href: "/dashboard",    label: "Ôn tập",    icon: Repeat },
+    { href: "/vocabulary",   label: "Sổ tay",    icon: BookOpen },
     { href: "/leaderboard",  label: "Xếp hạng",  icon: Trophy },
-    { href: "/profile",      label: "Cá nhân",   icon: User },
   ];
 
   return (
