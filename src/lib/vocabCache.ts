@@ -8,7 +8,7 @@ import { getDocs, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const CACHE_KEY = "vocab_cache_v5";
-const CACHE_TTL = 30 * 60 * 1000; // 30 phút
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 tiếng
 
 export type CachedVocabItem = {
   id: string;
