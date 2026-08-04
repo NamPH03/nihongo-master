@@ -1,9 +1,14 @@
 // scripts/import-n5-excel-csv.js
-// Script đọc file Excel N5 và import vào Firestore collection `vocabulary`
+// Script đọc file Excel (dạng CSV gộp trong 1 cột) và import vào Firestore collection `vocabulary`
 // Dùng Firebase Admin SDK để ghi hàng loạt (batch write).
+// Hỗ trợ nhiều bộ từ vựng (N5, FnB, ...) qua tham số --course, chỉ cần khai báo thêm
+// trong object COURSES bên dưới khi có file Excel mới (giữ đúng format cột như N5_vocab.xlsx).
 //
 // CÁCH CHẠY:
-//   node scripts/import-n5-excel-csv.js --import
+//   node scripts/import-n5-excel-csv.js --import                → xem trước + import bộ N5 (mặc định)
+//   node scripts/import-n5-excel-csv.js                          → chỉ xem trước bộ N5, KHÔNG ghi Firestore
+//   node scripts/import-n5-excel-csv.js --course=fnb --import    → xem trước + import bộ FnB (ăn uống)
+//   node scripts/import-n5-excel-csv.js --course=fnb             → chỉ xem trước bộ FnB
 
 const fs = require("fs");
 const path = require("path");
@@ -31,6 +36,37 @@ const adminApp =
 
 const db = getFirestore(adminApp);
 
+// ====== Cấu hình từng bộ từ vựng ======
+// docPrefix dùng để tạo document ID (word + lessonId) → PHẢI giữ nguyên giá trị cũ
+// của các course đã import trước đó, nếu không sẽ tạo document trùng lặp thay vì ghi đè.
+const COURSES = {
+  n5: {
+    excelPath: path.join(__dirname, "../Vocabulary/N5_vocab/N5_vocab.xlsx"),
+    courseId: "jlpt-n5",
+    courseName: "Tiếng Nhật N5 (Sơ cấp 1)",
+    docPrefix: "N5",
+  },
+  fnb: {
+    excelPath: path.join(__dirname, "../Vocabulary/FnB_vocab/FnB_vocab.xlsx"),
+    courseId: "tu-vung-an-uong",
+    courseName: "Từ vựng Ăn uống (Nhà hàng - Ẩm thực)",
+    docPrefix: "FnB",
+  },
+  travel: {
+    excelPath: path.join(__dirname, "../Vocabulary/Travel_vocab/Travel_vocab.xlsx"),
+    courseId: "tu-vung-du-lich",
+    courseName: "Từ vựng Du lịch (Travel)",
+    docPrefix: "Travel",
+  },
+  cultural: {
+    excelPath: path.join(__dirname, "../Vocabulary/JP_culture_vocab/JP_culture_vocab.xlsx"),
+    courseId: "van-hoa-nhat-ban",
+    courseName: "Từ vựng Văn hóa (Culture)",
+    docPrefix: "Cultural",
+  },
+
+};
+
 function parseCSVLine(text) {
   const result = [];
   let cur = "";
@@ -50,18 +86,30 @@ function parseCSVLine(text) {
   return result;
 }
 
+function getArgValue(flag) {
+  const prefix = `--${flag}=`;
+  const arg = process.argv.find((a) => a.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : null;
+}
+
 async function main() {
-  const excelPath = path.join(
-    __dirname,
-    "../Vocabulary/N5_vocab/N5_vocab.xlsx"
-  );
-  if (!fs.existsSync(excelPath)) {
-    console.error("❌ Không tìm thấy file Excel:", excelPath);
+  const courseKey = (getArgValue("course") || "n5").toLowerCase();
+  const course = COURSES[courseKey];
+
+  if (!course) {
+    console.error(
+      `❌ Không tìm thấy cấu hình cho course "${courseKey}". Các course hợp lệ: ${Object.keys(COURSES).join(", ")}`
+    );
     process.exit(1);
   }
 
-  console.log("📖 Đang đọc file:", excelPath);
-  const workbook = xlsx.readFile(excelPath);
+  if (!fs.existsSync(course.excelPath)) {
+    console.error("❌ Không tìm thấy file Excel:", course.excelPath);
+    process.exit(1);
+  }
+
+  console.log(`📖 [${courseKey}] Đang đọc file:`, course.excelPath);
+  const workbook = xlsx.readFile(course.excelPath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const rawRows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
@@ -102,7 +150,6 @@ async function main() {
 
     // exampleMeaning là tất cả phần giữa example và courseId (fields[lessonIdIdx - 1])
     const exampleMeaning = fields.slice(6, lessonIdIdx - 1).join(", ");
-    const courseId = "jlpt-n5";
 
     if (!word || word === "word") continue;
 
@@ -114,15 +161,15 @@ async function main() {
       level: (level || "N5").toUpperCase(),
       example: example || "",
       exampleMeaning: exampleMeaning || "",
-      courseId: "jlpt-n5",
-      courseName: "Tiếng Nhật N5 (Sơ cấp 1)",
+      courseId: course.courseId,
+      courseName: course.courseName,
       lessonId,
       lessonTitle: lessonTitle || lessonId,
-      source: "n5_excel_csv_import",
+      source: `${courseKey}_excel_csv_import`,
     });
   }
 
-  console.log(`📊 Tìm thấy tổng cộng ${parsedVocabList.length} từ vựng từ Excel.\n`);
+  console.log(`📊 [${courseKey}] Tìm thấy tổng cộng ${parsedVocabList.length} từ vựng từ Excel.\n`);
 
   if (!process.argv.includes("--import")) {
     console.log("ℹ️ Thêm cờ --import để tiến hành ghi vào Firestore.");
@@ -138,8 +185,8 @@ async function main() {
     const batch = db.batch();
 
     for (const item of chunk) {
-      // Document ID cố định theo word + lessonId để tránh trùng lặp
-      const docId = `N5_${item.word.replace(/\//g, "_")}_${item.lessonId}`;
+      // Document ID cố định theo docPrefix (riêng cho từng course) + word + lessonId để tránh trùng lặp
+      const docId = `${course.docPrefix}_${item.word.replace(/\//g, "_")}_${item.lessonId}`;
       const docRef = db.collection("vocabulary").doc(docId);
       batch.set(docRef, item, { merge: true });
     }
@@ -150,7 +197,7 @@ async function main() {
   }
 
   console.log("\n=======================================================");
-  console.log(`🎉 Hoàn tất! Đã ghi ${successCount} từ vựng N5 vào Firestore.`);
+  console.log(`🎉 Hoàn tất! Đã ghi ${successCount} từ vựng [${courseKey}] vào Firestore.`);
   console.log("=======================================================\n");
 }
 

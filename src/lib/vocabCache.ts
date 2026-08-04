@@ -1,6 +1,8 @@
 // src/lib/vocabCache.ts
-// Client-side sessionStorage cache cho vocabulary collection
-// TTL = 5 phút — giảm số lần đọc Firestore khi user điều hướng qua lại các trang
+// Client-side localStorage cache cho vocabulary collection
+// TTL = 30 phút — giảm số lần đọc Firestore khi user điều hướng qua lại các trang.
+// Dùng localStorage (thay vì sessionStorage) để cache sống sót qua việc đóng/mở lại
+// tab hoặc app bị hệ điều hành (đặc biệt iOS) giải phóng khỏi RAM — chỉ hết hạn theo TTL.
 
 import { getDocs, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -32,11 +34,11 @@ type CacheEntry = {
 function readCache(): CachedVocabItem[] | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const entry: CacheEntry = JSON.parse(raw);
     if (Date.now() - entry.ts > CACHE_TTL) {
-      sessionStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CACHE_KEY);
       return null;
     }
     return entry.data;
@@ -49,19 +51,19 @@ function writeCache(data: CachedVocabItem[]): void {
   if (typeof window === "undefined") return;
   try {
     const entry: CacheEntry = { ts: Date.now(), data };
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify(entry));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
-    // sessionStorage có thể đầy — bỏ qua, không crash app
+    // localStorage có thể đầy — bỏ qua, không crash app
   }
 }
 
 export function invalidateVocabCache(): void {
   if (typeof window === "undefined") return;
-  sessionStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(CACHE_KEY);
 }
 
 /**
- * Lấy toàn bộ vocabulary — ưu tiên cache sessionStorage (TTL 5 phút).
+ * Lấy toàn bộ vocabulary — ưu tiên cache localStorage (TTL 30 phút).
  * Chỉ gọi Firestore khi cache miss hoặc hết hạn.
  */
 export async function getAllVocabulary(): Promise<CachedVocabItem[]> {
