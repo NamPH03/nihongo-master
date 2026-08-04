@@ -15,11 +15,18 @@ import {
 
 // ===== SPACED REPETITION INTERVALS =====
 export const SR_INTERVALS: Record<number, number> = {
-  1: 1 * 60 * 60 * 1000,           // Mức 1 → 1 tiếng
-  2: 24 * 60 * 60 * 1000,           // Mức 2 → 1 ngày
-  3: 3 * 24 * 60 * 60 * 1000,       // Mức 3 → 3 ngày
-  4: 7 * 24 * 60 * 60 * 1000,       // Mức 4 → 1 tuần
-  5: 60 * 24 * 60 * 60 * 1000,      // Mức 5 → 2 tháng
+  1: 1 * 60 * 60 * 1000,              // Mức 1 → 1 giờ
+  2: 1 * 24 * 60 * 60 * 1000,         // Mức 2 → 1 ngày
+  3: 5 * 24 * 60 * 60 * 1000,         // Mức 3 → 5 ngày
+  4: 14 * 24 * 60 * 60 * 1000,        // Mức 4 → 14 ngày
+  5: 30 * 24 * 60 * 60 * 1000,        // Mức 5 → 30 ngày (ôn đầu)
+};
+
+// Hybrid Mastered: ôn đúng lần 1 tại Level 5 → +60 ngày, lần 2 → +120 ngày → MASTERED
+export const SR_LEVEL5_REVIEW_INTERVALS: Record<number, number> = {
+  0: 30 * 24 * 60 * 60 * 1000,        // reviewCount 0 → lần ôn đầu (đã được set khi promote lên 5)
+  1: 60 * 24 * 60 * 60 * 1000,        // reviewCount 1 → ôn đúng lần 1 → +60 ngày
+  2: 120 * 24 * 60 * 60 * 1000,       // reviewCount 2 → ôn đúng lần 2 → +120 ngày → MASTERED
 };
 
 // ===== TYPES =====
@@ -27,8 +34,9 @@ export type WordProgress = {
   wordId: string;
   srLevel: number;
   nextReview: string | null;
-  status: "new" | "learned";
+  status: "new" | "learned" | "mastered";
   lastReviewed: string | null;
+  reviewCount?: number;   // Chỉ dùng ở Level 5: đếm số lần ôn đúng (0, 1, 2 → mastered)
 };
 
 export type DueWordProgress = WordProgress & {
@@ -72,6 +80,7 @@ async function fetchUserProgressDocs(userId: string): Promise<ProgressDoc[]> {
       nextReview: data.nextReview || null,
       status: data.status || "new",
       lastReviewed: data.lastReviewed || null,
+      reviewCount: Number(data.reviewCount || 0),
     };
   });
 
@@ -118,8 +127,50 @@ export async function markNewWordLearned(
 export async function promoteWord(
   userId: string,
   wordId: string,
-  currentLevel: number
+  currentLevel: number,
+  currentReviewCount: number = 0
 ): Promise<void> {
+  // ── Hybrid Mastered: xử lý riêng khi đang ở Level 5 ──
+  if (currentLevel === 5) {
+    const newReviewCount = currentReviewCount + 1;
+    if (newReviewCount >= 2) {
+      // Đã ôn đúng đủ 2 lần ở Level 5 → MASTERED
+      await setDoc(wordProgressRef(userId, wordId), {
+        wordId,
+        srLevel: 5,
+        nextReview: null,
+        status: "mastered",
+        lastReviewed: new Date().toISOString(),
+        reviewCount: newReviewCount,
+      }, { merge: true });
+      invalidateProgressCache(userId);
+      // Tăng masteredCount trong stats
+      const statsRef = userStatsRef(userId);
+      const snap = await getDoc(statsRef);
+      if (snap.exists()) {
+        const current = snap.data().masteredCount || 0;
+        await setDoc(statsRef, { masteredCount: current + 1 }, { merge: true });
+      }
+      return;
+    }
+    // Chưa đủ 2 lần → đặt lịch ôn tiếp theo
+    const interval = newReviewCount === 1
+      ? SR_LEVEL5_REVIEW_INTERVALS[1]   // +60 ngày
+      : SR_LEVEL5_REVIEW_INTERVALS[2];  // +120 ngày (phòng trường hợp)
+    const nextReview = new Date(Date.now() + interval).toISOString();
+    await setDoc(wordProgressRef(userId, wordId), {
+      wordId,
+      srLevel: 5,
+      nextReview,
+      status: "learned",
+      lastReviewed: new Date().toISOString(),
+      reviewCount: newReviewCount,
+    }, { merge: true });
+    invalidateProgressCache(userId);
+    return;
+  }
+
+  // ── Bình thường: tăng level 1→2→3→4→5 ──
   const newLevel = Math.min(currentLevel + 1, 5);
   const nextReview = new Date(Date.now() + SR_INTERVALS[newLevel]).toISOString();
   await setDoc(wordProgressRef(userId, wordId), {
@@ -128,17 +179,9 @@ export async function promoteWord(
     nextReview,
     status: "learned",
     lastReviewed: new Date().toISOString(),
+    reviewCount: 0,
   }, { merge: true });
   invalidateProgressCache(userId);
-
-  if (currentLevel < 5 && newLevel === 5) {
-    const statsRef = userStatsRef(userId);
-    const snap = await getDoc(statsRef);
-    if (snap.exists()) {
-      const currentMastered = snap.data().masteredCount || 0;
-      await setDoc(statsRef, { masteredCount: currentMastered + 1 }, { merge: true });
-    }
-  }
 }
 
 // Giảm mức khi quên
@@ -155,16 +198,31 @@ export async function demoteWord(
     nextReview,
     status: "learned",
     lastReviewed: new Date().toISOString(),
+    reviewCount: 0,   // Reset reviewCount khi bị demote
   }, { merge: true });
   invalidateProgressCache(userId);
+}
 
-  if (currentLevel === 5 && newLevel < 5) {
-    const statsRef = userStatsRef(userId);
-    const snap = await getDoc(statsRef);
-    if (snap.exists()) {
-      const currentMastered = snap.data().masteredCount || 0;
-      await setDoc(statsRef, { masteredCount: Math.max(0, currentMastered - 1) }, { merge: true });
-    }
+// Đưa từ vào mastered trực tiếp (dùng cho màn hình tổng kết sau bài học)
+export async function masterWordDirectly(
+  userId: string,
+  wordId: string
+): Promise<void> {
+  await setDoc(wordProgressRef(userId, wordId), {
+    wordId,
+    srLevel: 5,
+    nextReview: null,
+    status: "mastered",
+    lastReviewed: new Date().toISOString(),
+    reviewCount: 2,
+  }, { merge: true });
+  invalidateProgressCache(userId);
+  // Tăng masteredCount
+  const statsRef = userStatsRef(userId);
+  const snap = await getDoc(statsRef);
+  if (snap.exists()) {
+    const current = snap.data().masteredCount || 0;
+    await setDoc(statsRef, { masteredCount: current + 1 }, { merge: true });
   }
 }
 
@@ -235,6 +293,7 @@ export async function getSRStats(
 }
 
 // Lấy từ đến hạn ôn tập — CHỈ trả về từ có vocabulary tương ứng (tránh orphan)
+// Bỏ qua từ đã "mastered" (không cần ôn nữa)
 export async function getDueWords(
   userId: string,
   limitCount = 20
@@ -251,6 +310,7 @@ export async function getDueWords(
     .filter((d) => {
       if (d.id === "stats") return false;
       if (!vocabIds.has(d.id)) return false;
+      if (d.status === "mastered") return false;   // Bỏ qua từ đã mastered
       if (d.status !== "learned") return false;
       const nextReview = d.nextReview;
       return !nextReview || nextReview <= now;
@@ -284,6 +344,7 @@ export async function getDueWordsWithVocab(
     .filter((d) => {
       if (d.id === "stats") return false;
       if (!vocabIds.has(d.id)) return false;
+      if (d.status === "mastered") return false;   // Bỏ qua từ đã mastered
       if (d.status !== "learned") return false;
       const nextReview = d.nextReview;
       return !nextReview || nextReview <= now;
@@ -300,6 +361,7 @@ export async function getDueWordsWithVocab(
 export async function getDashboardSummary(userId: string): Promise<{
   srStats: Record<number, number>;
   dueCount: number;
+  masteredCount: number;
 }> {
   const now = new Date().toISOString();
   const [allVocab, docs] = await Promise.all([
@@ -310,12 +372,19 @@ export async function getDashboardSummary(userId: string): Promise<{
 
   const srStats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let dueCount = 0;
+  let masteredCount = 0;
 
   docs.forEach((d) => {
     if (d.id === "stats") return;
     if (!vocabIds.has(d.id)) return;
 
-    // SR Stats
+    // Đếm mastered riêng, không tính vào srStats
+    if (d.status === "mastered") {
+      masteredCount++;
+      return;
+    }
+
+    // SR Stats (chỉ từ "learned")
     const level = d.srLevel;
     if (level >= 1 && level <= 5) srStats[level]++;
 
@@ -328,7 +397,7 @@ export async function getDashboardSummary(userId: string): Promise<{
     }
   });
 
-  return { srStats, dueCount };
+  return { srStats, dueCount, masteredCount };
 }
 
 // ===== PROGRESS & STREAK =====

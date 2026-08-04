@@ -16,7 +16,7 @@ type Vocabulary = {
   id: string; word: string; reading: string; type: string; meaning: string; level: string;
   example?: string; exampleMeaning?: string;
 };
-type ReviewWord = CachedVocabItem & { wordId: string; srLevel: number; nextReview: string; };
+type ReviewWord = CachedVocabItem & { wordId: string; srLevel: number; nextReview: string; reviewCount: number; };
 type ReviewStep = "meaning-to-word" | "word-to-meaning" | "type-reading" | "listening";
 
 const BASE_STEPS: ReviewStep[] = ["meaning-to-word", "word-to-meaning", "listening"];
@@ -134,11 +134,12 @@ export default function ReviewPage() {
         for (const progress of dueProgress) {
           const vocab = vocabMap.get(progress.id);
           if (vocab) {
-            reviewWords.push({
+                    reviewWords.push({
               ...vocab,
               wordId: progress.id,
               srLevel: progress.srLevel || 1,
               nextReview: progress.nextReview || "",
+              reviewCount: (progress as { reviewCount?: number }).reviewCount || 0,
             });
           }
         }
@@ -250,7 +251,7 @@ export default function ReviewPage() {
 
     // Chỉ áp dụng SRS lần đầu tiên gặp từ (không áp dụng lại khi ôn lại)
     if (!isRecheck) {
-      if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
+      if (promote) await promoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1, currentWord.reviewCount || 0);
       else await demoteWord(user.uid, currentWord.wordId, currentWord.srLevel || 1);
     }
     // markStudiedToday chỉ gọi 1 lần/phiên — tránh 20 Firestore reads thừa

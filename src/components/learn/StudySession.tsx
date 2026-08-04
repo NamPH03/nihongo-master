@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { auth } from "@/lib/firebase";
-import { markNewWordLearned, updateProgress } from "@/lib/progress";
+import { markNewWordLearned, updateProgress, masterWordDirectly } from "@/lib/progress";
 import { speakJapanese } from "@/lib/speech";
 import SpeakButton from "@/components/ui/SpeakButton";
 import HandwritingCanvas from "@/components/dictionary/HandwritingCanvas";
@@ -138,6 +138,15 @@ export default function StudySession({
   const [showExitModal, setShowExitModal] = useState(false);
   const canAdvanceRef = useRef<number>(0);
 
+  // ===== TRẠNG THÁI TỔNG KẺT SAU BÀI HỌC =====
+  const [showSummary, setShowSummary] = useState(false);
+  const [completedWords, setCompletedWords] = useState<Vocabulary[]>([]);
+  const [skippedWordIds, setSkippedWordIds] = useState<Set<string>>(new Set());
+  const [wordReviewChoices, setWordReviewChoices] = useState<Record<string, boolean>>({});
+  const [isSavingSummary, setIsSavingSummary] = useState(false);
+  const [summaryDone, setSummaryDone] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{ toReview: number; toMaster: number }>({ toReview: 0, toMaster: 0 });
+
   useEffect(() => {
     if (words.length === 0) return;
     // Lọc bỏ từ đã học
@@ -164,6 +173,18 @@ export default function StudySession({
     const timer = window.setTimeout(() => speakJapanese(current.word, false), 500);
     return () => window.clearTimeout(timer);
   }, [sessionWords]);
+
+  // Khi màn hình tổng kết xuất hiện: khởi tạo choices dựa trên hành vi của người dùng
+  // - Skip ("Mình đã biết"): unchecked (false) → master
+  // - Học đầy đủ quiz: checked (true) → ôn SRS
+  useEffect(() => {
+    if (!showSummary) return;
+    const initialChoices: Record<string, boolean> = {};
+    completedWords.forEach((w) => {
+      initialChoices[w.id] = !skippedWordIds.has(w.id);
+    });
+    setWordReviewChoices(initialChoices);
+  }, [showSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentWord = sessionWords[currentIndex];
 
@@ -204,8 +225,18 @@ export default function StudySession({
       });
     }
     setLearnedCount((prev) => prev + 1);
+
+    // Track từ đã hoàn thành (dùng cho màn hình tổng kết)
+    if (currentWord) {
+      setCompletedWords((prev) => {
+        if (prev.find((w) => w.id === currentWord.id)) return prev;
+        return [...prev, currentWord];
+      });
+    }
+
     if (currentIndex + 1 >= sessionWords.length) {
-      setCurrentStep("result");
+      // Hiển màn hình tổng kết thay vì result trực tiếp
+      setShowSummary(true);
       return;
     }
 
@@ -291,6 +322,10 @@ export default function StudySession({
   }, [loading, currentIndex, sessionWords, currentStep, isFlipped, isChecked, selectedChoice, choices, answerStatus, recognizedCandidates]);
 
   const handleSkipWord = async () => {
+    // Track từ bị skip ("Mình đã biết từ này") — sẽ đưa vào mastered ở tổng kết
+    if (currentWord) {
+      setSkippedWordIds((prev) => new Set(Array.from(prev).concat(currentWord.id)));
+    }
     await goNextWord();
   };
 
@@ -377,7 +412,150 @@ export default function StudySession({
     );
   }
 
+  // ===== HÀM XÁC NHẬN TỔNG KẾT =====
+  const handleConfirmSummary = async () => {
+    const user = auth.currentUser;
+    if (!user || isSavingSummary) return;
+    setIsSavingSummary(true);
 
+    let toReview = 0;
+    let toMaster = 0;
+
+    try {
+      await Promise.all(
+        completedWords.map(async (word) => {
+          const wantsReview = wordReviewChoices[word.id] !== false;
+          if (wantsReview) {
+            // Đã được lưu qua markNewWordLearned rồi, chỉ cần đếm
+            toReview++;
+          } else {
+            // Người dùng chọn master ngay
+            await masterWordDirectly(user.uid, word.id);
+            toMaster++;
+          }
+        })
+      );
+      setSummaryResult({ toReview, toMaster });
+      setSummaryDone(true);
+      setShowSummary(false);
+      setCurrentStep("result");
+    } catch (err) {
+      console.error("Lỗi lưu tổng kết:", err);
+    } finally {
+      setIsSavingSummary(false);
+    }
+  };
+
+  // ===== MÀN HÌNH TỔNG KẾT =====
+  if (showSummary) {
+    const toReviewCount = completedWords.filter((w) => wordReviewChoices[w.id] !== false).length;
+    const toMasterCount = completedWords.filter((w) => wordReviewChoices[w.id] === false).length;
+
+    return (
+      <div className="pb-24 animate-scale-in">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-3xl bg-[var(--primary-glow)] flex items-center justify-center text-3xl">
+            📋
+          </div>
+          <h2 className="text-2xl font-bold mb-1" style={{ color: "var(--text)" }}>
+            Tổng kết bài học
+          </h2>
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            Chọn từ bạn muốn <strong style={{ color: "var(--primary)" }}>ôn tập SRS</strong> hoặc đánh dấu là đã <strong>thuộc rồi</strong>
+          </p>
+        </div>
+
+        {/* Chú thích */}
+        <div className="flex gap-3 mb-4 text-xs justify-center">
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-4 rounded border-2 flex items-center justify-center text-[10px]" style={{ borderColor: "var(--primary)", background: "var(--primary-glow)" }}>✓</div>
+            <span style={{ color: "var(--text-muted)" }}>Muốn ôn SRS</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-4 rounded border-2" style={{ borderColor: "var(--border-strong)" }}></div>
+            <span style={{ color: "var(--text-muted)" }}>Đã thuộc (Mastered)</span>
+          </div>
+        </div>
+
+        {/* Danh sách từ */}
+        <div className="flex flex-col gap-2 mb-6 max-h-[55vh] overflow-y-auto pr-1">
+          {completedWords.map((word) => {
+            const isChecked = wordReviewChoices[word.id] !== false;
+            return (
+              <button
+                key={word.id}
+                onClick={() => setWordReviewChoices((prev) => ({ ...prev, [word.id]: !isChecked }))}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl text-left transition-all duration-200 border"
+                style={{
+                  background: isChecked ? "var(--primary-glow)" : "var(--surface-2)",
+                  borderColor: isChecked ? "var(--primary)" : "var(--border-color)",
+                }}
+              >
+                {/* Checkbox */}
+                <div
+                  className="w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-all"
+                  style={{
+                    borderColor: isChecked ? "var(--primary)" : "var(--border-strong)",
+                    background: isChecked ? "var(--primary)" : "transparent",
+                  }}
+                >
+                  {isChecked && <span className="text-[11px] font-bold" style={{ color: "#0d1f14" }}>✓</span>}
+                </div>
+
+                {/* Nội dung từ */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-jp font-bold text-lg" style={{ color: "var(--text)" }}>{word.word}</span>
+                    {word.word !== word.reading && (
+                      <span className="text-xs font-jp" style={{ color: "var(--primary)" }}>{word.reading}</span>
+                    )}
+                  </div>
+                  <div className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{word.meaning}</div>
+                </div>
+
+                {/* Badge trạng thái */}
+                <div
+                  className="flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded-full"
+                  style={{
+                    background: isChecked ? "var(--primary)" : "var(--surface-3)",
+                    color: isChecked ? "#0d1f14" : "var(--text-muted)",
+                  }}
+                >
+                  {isChecked ? "⚡ Ôn SRS" : "⭐ Mastered"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Footer thống kê + nút xác nhận */}
+        <div className="card p-4 rounded-2xl mb-4 flex justify-around" style={{ background: "var(--surface-2)" }}>
+          <div className="text-center">
+            <div className="text-2xl font-bold" style={{ color: "var(--primary)" }}>{toReviewCount}</div>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>Sẽ ôn SRS</div>
+          </div>
+          <div className="w-px" style={{ background: "var(--border-color)" }}></div>
+          <div className="text-center">
+            <div className="text-2xl font-bold" style={{ color: "#f59e0b" }}>{toMasterCount}</div>
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>Đã thuộc</div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleConfirmSummary}
+          disabled={isSavingSummary}
+          className="btn btn-primary w-full py-4 rounded-2xl text-base font-bold flex items-center justify-center gap-2 shadow-lg"
+        >
+          {isSavingSummary ? (
+            <><div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "#0d1f14", borderTopColor: "transparent" }} /> Đang lưu...</>
+          ) : (
+            <>✅ Xác nhận & Lưu</>
+          )}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-24">
@@ -772,7 +950,7 @@ export default function StudySession({
           </p>
 
           {/* Tiến độ tổng bài học */}
-          <div className="rounded-2xl p-5 mb-8 text-left border" style={{ background: "var(--surface-2)", borderColor: "var(--border-color)" }}>
+          <div className="rounded-2xl p-5 mb-4 text-left border" style={{ background: "var(--surface-2)", borderColor: "var(--border-color)" }}>
             <div className="flex justify-between items-center text-sm mb-2">
               <span style={{ color: "var(--text-muted)" }}>Tiến độ bài học</span>
               <span className="font-bold text-green-500">100%</span>
@@ -794,7 +972,23 @@ export default function StudySession({
             </p>
           </div>
 
+          {/* Thống kê từ SRS vs Mastered */}
+          {summaryDone && (summaryResult.toReview > 0 || summaryResult.toMaster > 0) && (
+            <div className="rounded-2xl p-4 mb-6 flex justify-around border" style={{ background: "var(--surface-2)", borderColor: "var(--border-color)" }}>
+              <div className="text-center">
+                <div className="text-xl font-bold" style={{ color: "var(--primary)" }}>⚡ {summaryResult.toReview}</div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>Sẽ ôn SRS</div>
+              </div>
+              <div className="w-px" style={{ background: "var(--border-color)" }}></div>
+              <div className="text-center">
+                <div className="text-xl font-bold" style={{ color: "#f59e0b" }}>⭐ {summaryResult.toMaster}</div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>Mastered ngay</div>
+              </div>
+            </div>
+          )}
+
           {/* Các nút điều hướng rõ ràng */}
+
           <div className="flex flex-col gap-3">
             <Link
               href={`/learn/${encodeURIComponent(courseId)}`}

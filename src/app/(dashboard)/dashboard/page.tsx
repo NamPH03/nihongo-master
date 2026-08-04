@@ -29,7 +29,7 @@ const srColors: Record<number, string> = {
   1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#3b82f6", 5: "#22c55e",
 };
 const srLabels: Record<number, string> = {
-  1: "1 tiếng", 2: "1 ngày", 3: "3 ngày", 4: "1 tuần", 5: "2 tháng",
+  1: "1 giờ", 2: "1 ngày", 3: "5 ngày", 4: "14 ngày", 5: "30 ngày",
 };
 
 export default function DashboardPage() {
@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [srStats, setSrStats] = useState<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
   const [dueCount, setDueCount] = useState(0);
+  const [masteredCount, setMasteredCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [topEntries, setTopEntries] = useState<LeaderboardEntry[]>([]);
   const router = useRouter();
@@ -50,6 +51,7 @@ export default function DashboardPage() {
     setProgress(prog);
     setSrStats(summary.srStats);
     setDueCount(summary.dueCount);
+    setMasteredCount(summary.masteredCount || 0);
     setTopEntries(lb.slice(0, 3));
     setLoading(false);
     if (typeof window !== "undefined") {
@@ -219,11 +221,36 @@ export default function DashboardPage() {
                 </div>
               );
             })}
+            {/* Cột Mastered — tách biệt */}
+            {masteredCount > 0 && (
+              <div className="flex flex-col items-center gap-1.5 flex-1">
+                <span className="tabular text-[10px] font-bold" style={{ color: "#f59e0b" }}>
+                  {masteredCount}
+                </span>
+                <div className="w-full flex items-end" style={{ height: "60px" }}>
+                  <div
+                    className="w-full rounded-t-lg transition-all duration-700 ease-spring"
+                    style={{
+                      height: `${Math.max((masteredCount / Math.max(maxSR, masteredCount)) * 100, 8)}%`,
+                      background: "linear-gradient(180deg, #f59e0b, #f59e0b88)",
+                    }}
+                  />
+                </div>
+                <div className="text-center mt-1">
+                  <div className="text-[10px] font-bold" style={{ color: "#f59e0b" }}>
+                    ⭐
+                  </div>
+                  <div className="text-[8px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                    Mastered
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 gap-3 mb-6 animate-fade-up delay-75">
+        <div className="grid grid-cols-4 gap-3 mb-6 animate-fade-up delay-75">
           {[
             { icon: BookCheck, value: totalLearned, label: "Đã học", color: "#3b82f6", bg: "rgba(59,130,246,0.08)" },
             { icon: Sparkles,  value: todayCount,   label: "Hôm nay", color: "var(--primary)", bg: "var(--primary-glow)" },
@@ -237,6 +264,14 @@ export default function DashboardPage() {
               <div className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: "var(--text-faint)" }}>{label}</div>
             </div>
           ))}
+          {/* Card Mastered — hiển thị riêng */}
+          <div className="card p-4 flex flex-col items-center justify-center text-center">
+            <div className="w-9 h-9 rounded-2xl flex items-center justify-center mb-2" style={{ background: "rgba(245,158,11,0.1)" }}>
+              <span className="text-lg">⭐</span>
+            </div>
+            <div className="tabular text-lg font-bold" style={{ color: "#f59e0b" }}>{masteredCount}</div>
+            <div className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: "var(--text-faint)" }}>Mastered</div>
+          </div>
         </div>
 
         {/* Mini Leaderboard */}

@@ -23,7 +23,7 @@ type NoteWord = {
   type: string;
   srLevel: number;
   nextReview: string | null;
-  status: "learned" | "new";
+  status: "learned" | "new" | "mastered";
 };
 
 // ─── Màu sắc ─────────────────────────────────────────────────
@@ -47,9 +47,9 @@ const srBg: Record<number, string> = {
 const srLabels: Record<number, string> = {
   1: "Mức 1 — Ôn lại sau 1 giờ",
   2: "Mức 2 — Ôn lại sau 1 ngày",
-  3: "Mức 3 — Ôn lại sau 3 ngày",
-  4: "Mức 4 — Ôn lại sau 1 tuần",
-  5: "Mức 5 — Ôn lại sau 2 tháng",
+  3: "Mức 3 — Ôn lại sau 5 ngày",
+  4: "Mức 4 — Ôn lại sau 14 ngày",
+  5: "Mức 5 — Ôn lại sau 30 ngày",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -69,10 +69,12 @@ export default function NotebookPage() {
   const [allWords, setAllWords] = useState<NoteWord[]>([]);
   const [filtered, setFiltered]  = useState<NoteWord[]>([]);
   const [srStats, setSrStats]   = useState<Record<number, number>>({ 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+  const [masteredCount, setMasteredCount] = useState(0);
+  const [selectedSR, setSelectedSR]   = useState<number | null>(null);
+  const [showMastered, setShowMastered] = useState(false);
 
   const [search, setSearch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("Tất cả");
-  const [selectedSR, setSelectedSR]   = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("");
@@ -102,6 +104,7 @@ export default function NotebookPage() {
 
       const wordDetails: NoteWord[] = [];
       const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      let mCount = 0;
 
       for (const pd of progressDocs) {
         const data = pd.data();
@@ -109,10 +112,22 @@ export default function NotebookPage() {
         const vocab = vocabMap.get(wordId);
         if (vocab) {
           const srLv = data.srLevel ?? 0;
-          if (srLv >= 1 && srLv <= 5) {
+          const status = data.status || "new";
+          if (status === "mastered") {
+            mCount++;
+            wordDetails.push({
+              id: wordId,
+              word: vocab.word || "",
+              reading: vocab.reading || "",
+              meaning: vocab.meaning || "",
+              level: vocab.level || "N5",
+              type: vocab.type || "",
+              srLevel: 5,
+              nextReview: null,
+              status: "mastered",
+            });
+          } else if (srLv >= 1 && srLv <= 5) {
             stats[srLv] = (stats[srLv] || 0) + 1;
-          }
-          if (srLv >= 1) {
             wordDetails.push({
               id: wordId,
               word: vocab.word || "",
@@ -122,7 +137,7 @@ export default function NotebookPage() {
               type: vocab.type || "",
               srLevel: srLv,
               nextReview: data.nextReview || null,
-              status: data.status || "new",
+              status: status as "learned" | "new" | "mastered",
             });
           }
         }
@@ -132,6 +147,7 @@ export default function NotebookPage() {
       setAllWords(wordDetails);
       setFiltered(wordDetails);
       setSrStats(stats);
+      setMasteredCount(mCount);
     } catch (e) {
       console.error("Lỗi tải sổ tay:", e);
     } finally {
@@ -155,9 +171,14 @@ export default function NotebookPage() {
   useEffect(() => {
     let res = allWords;
 
-    if (selectedSR !== null) {
-      res = res.filter((w) => w.srLevel === selectedSR);
+    if (showMastered) {
+      res = res.filter((w) => w.status === "mastered");
+    } else if (selectedSR !== null) {
+      res = res.filter((w) => w.srLevel === selectedSR && w.status !== "mastered");
+    } else {
+      res = res.filter((w) => w.status !== "mastered");
     }
+
     if (selectedLevel !== "Tất cả") {
       res = res.filter((w) => w.level === selectedLevel);
     }
@@ -172,7 +193,7 @@ export default function NotebookPage() {
     }
 
     setFiltered(res);
-  }, [allWords, selectedSR, selectedLevel, search]);
+  }, [allWords, selectedSR, selectedLevel, search, showMastered]);
 
   const totalWords = allWords.length;
 
@@ -202,11 +223,11 @@ export default function NotebookPage() {
           <div className="grid grid-cols-5 gap-2">
             {[1, 2, 3, 4, 5].map((level) => {
               const count = srStats[level] || 0;
-              const isSelected = selectedSR === level;
+              const isSelected = selectedSR === level && !showMastered;
               return (
                 <button
                   key={level}
-                  onClick={() => setSelectedSR(isSelected ? null : level)}
+                  onClick={() => { setShowMastered(false); setSelectedSR(isSelected ? null : level); }}
                   className="flex flex-col items-center justify-center p-3 rounded-2xl border transition-all duration-200 active:scale-95"
                   style={{
                     background: isSelected ? srBg[level] : "var(--surface-2)",
@@ -224,6 +245,21 @@ export default function NotebookPage() {
               );
             })}
           </div>
+          {/* Nút lọc Mastered */}
+          <button
+            onClick={() => { setShowMastered((prev) => !prev); setSelectedSR(null); }}
+            className="mt-3 w-full flex items-center justify-between px-4 py-2.5 rounded-2xl border transition-all duration-200"
+            style={{
+              background: showMastered ? "rgba(245,158,11,0.1)" : "var(--surface-2)",
+              borderColor: showMastered ? "#f59e0b" : "var(--border-color)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">⭐</span>
+              <span className="text-sm font-semibold" style={{ color: showMastered ? "#f59e0b" : "var(--text)" }}>Từ đã Mastered</span>
+            </div>
+            <span className="text-sm font-bold" style={{ color: "#f59e0b" }}>{masteredCount} từ</span>
+          </button>
           {selectedSR !== null && (
             <div className="mt-3 flex justify-between items-center text-xs">
               <span style={{ color: "var(--text-muted)" }}>
@@ -330,12 +366,21 @@ export default function NotebookPage() {
                             {word.level}
                           </span>
                         )}
-                        <span
-                          className="badge text-[10px] font-bold"
-                          style={{ background: srBg[word.srLevel], color: srColors[word.srLevel] }}
-                        >
-                          Mức {word.srLevel}
-                        </span>
+                        {word.status === "mastered" ? (
+                          <span
+                            className="badge text-[10px] font-bold"
+                            style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}
+                          >
+                            ⭐ Mastered
+                          </span>
+                        ) : (
+                          <span
+                            className="badge text-[10px] font-bold"
+                            style={{ background: srBg[word.srLevel], color: srColors[word.srLevel] }}
+                          >
+                            Mức {word.srLevel}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -355,9 +400,9 @@ export default function NotebookPage() {
                         )}
                         <span
                           className="text-[10px] font-semibold"
-                          style={{ color: isOverdue ? srColors[word.srLevel] : "var(--text-faint)" }}
+                          style={{ color: word.status === "mastered" ? "#f59e0b" : isOverdue ? srColors[word.srLevel] : "var(--text-faint)" }}
                         >
-                          {reviewText}
+                          {word.status === "mastered" ? "Đã thuộc ✨" : reviewText}
                         </span>
                       </div>
                       <button

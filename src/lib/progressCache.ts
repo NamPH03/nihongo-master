@@ -9,8 +9,9 @@ export type ProgressDoc = {
   wordId: string;
   srLevel: number;
   nextReview: string | null;
-  status: string;  // "learned" | "new"
+  status: string;  // "learned" | "new" | "mastered"
   lastReviewed: string | null;
+  reviewCount?: number;  // Dùng cho Hybrid Mastered Level 5
 };
 
 const CACHE_TTL = 2 * 60 * 1000; // 2 phút
