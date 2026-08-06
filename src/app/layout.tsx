@@ -31,7 +31,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-page text-tx antialiased">
         <SplashScreen />
-        {children}
+        <div id="app-scroll">{children}</div>
       </body>
     </html>
   );

@@ -111,20 +111,7 @@ export default function SplashScreen() {
       </div>
 
       {/* Progress bar ở dưới cùng */}
-      <div className="absolute bottom-12 flex flex-col items-center gap-2">
-        <div
-          className="w-24 h-1 rounded-full overflow-hidden"
-          style={{ background: trackColor }}
-        >
-          <div
-            className="h-full rounded-full animate-pulse"
-            style={{
-              width: "80%",
-              background: "linear-gradient(to right, #22c55e, #4ade80)",
-            }}
-          />
-        </div>
-      </div>
+      
     </div>
   );
 }

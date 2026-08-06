@@ -72,6 +72,10 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Khoá viewport — trang không tự cuộn nữa, chỉ #app-scroll bên trong mới cuộn */
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -80,13 +84,35 @@ body {
   color: var(--text);
   transition: background-color 0.3s ease, color 0.3s ease;
   line-height: 1.6;
-  /* Bu khoang trang cho Fixed Navbar tren */
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* position: fixed phòng trường hợp trình duyệt (đặc biệt Safari iOS) vẫn
+     cố cuộn/rung (rubber-band) body dù đã overflow: hidden */
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+/* ============================================================
+   APP SCROLL — vùng cuộn DUY NHẤT của toàn app, nằm giữa Navbar
+   (top, fixed) và Bottom Nav (mobile, fixed). Trang nào nội dung
+   ngắn (dashboard, flashcard, review...) sẽ không cuộn được gì cả.
+   Trang nào dài (bài học, sổ tay...) cuộn bình thường trong khu vực
+   này — không ảnh hưởng gì tới navbar/bottom-nav phía trên/dưới.
+   ============================================================ */
+#app-scroll {
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  /* Bù khoảng trắng cho Fixed Navbar trên */
   padding-top: 3.5rem;
 }
 
-/* Tren mobile: but them khoang trang cho Bottom Navigation */
 @media (max-width: 767px) {
-  body {
+  #app-scroll {
     padding-bottom: calc(env(safe-area-inset-bottom) + 5.2rem);
   }
 }
