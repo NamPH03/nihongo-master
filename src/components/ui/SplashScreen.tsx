@@ -71,7 +71,7 @@ export default function SplashScreen() {
   const bgColor = isDark ? "#0c1410" : "#f6fdf8";
   const textColor = isDark ? "#e4f4eb" : "#0d1f14";
   const subColor = isDark ? "#7aad8e" : "#4a7a61";
-  const trackColor = isDark ? "#1a2620" : "#e0f2e8";
+  
 
   return (
     <div
