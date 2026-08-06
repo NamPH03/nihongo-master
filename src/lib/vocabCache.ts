@@ -9,13 +9,9 @@
 import { getDocs, getDoc, doc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-<<<<<<< HEAD
-const CACHE_KEY = "vocab_cache_v5";
-const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 tiếng
-=======
+
 const CACHE_KEY = "vocab_cache_v6";
 const VERSION_DOC_PATH = ["meta", "vocabVersion"] as const;
->>>>>>> f5925cc (update vocab: version-check cache thay TTL)
 
 export type CachedVocabItem = {
   id: string;
