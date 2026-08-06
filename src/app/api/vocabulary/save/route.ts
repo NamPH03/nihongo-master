@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb, getAdminAuth } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(req: NextRequest) {
   // --- Auth check ---
@@ -56,6 +57,13 @@ export async function POST(req: NextRequest) {
       source: "dictionary",
       createdAt: new Date().toISOString(),
     });
+
+    // Từ mới thực sự được thêm vào vocabulary → tăng version để client
+    // các thiết bị/tab tự phát hiện và đọc lại toàn bộ vocab ở lần load kế tiếp.
+    await db.collection("meta").doc("vocabVersion").set(
+      { version: FieldValue.increment(1), updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
 
     return NextResponse.json({ wordId: newDoc.id });
   } catch (err) {

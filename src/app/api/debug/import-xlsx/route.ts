@@ -1,6 +1,7 @@
 // C:\Users\NamPH's PC\Projects\nihongo-master\src\app\api\debug\import-xlsx\route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
@@ -171,6 +172,13 @@ export async function GET(req: NextRequest) {
         importedCount++;
       }
     }
+
+    // Đã thay đổi vocabulary collection → tăng version để client tự phát hiện
+    // và đọc lại toàn bộ (thay vì dùng cache cũ tới khi hết TTL).
+    await db.collection("meta").doc("vocabVersion").set(
+      { version: FieldValue.increment(1), updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
 
     return NextResponse.json({
       success: true,

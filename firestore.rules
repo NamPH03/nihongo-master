@@ -10,6 +10,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ===== META (vocabVersion cache-invalidation doc) =====
+    // Client đọc meta/vocabVersion để biết cache vocabulary trong localStorage
+    // còn mới hay đã cũ. Chỉ Admin SDK (server-side, khi import/thêm từ mới) mới ghi.
+    match /meta/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // ===== LESSONS =====
     // Nội dung bài học — đọc công khai khi đã đăng nhập
     match /lessons/{lessonId} {

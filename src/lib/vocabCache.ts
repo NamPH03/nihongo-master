@@ -1,14 +1,21 @@
 // src/lib/vocabCache.ts
 // Client-side localStorage cache cho vocabulary collection
-// TTL = 30 phút — giảm số lần đọc Firestore khi user điều hướng qua lại các trang.
-// Dùng localStorage (thay vì sessionStorage) để cache sống sót qua việc đóng/mở lại
-// tab hoặc app bị hệ điều hành (đặc biệt iOS) giải phóng khỏi RAM — chỉ hết hạn theo TTL.
+// Version-check: thay vì hết hạn theo thời gian (TTL), cache chỉ bị coi là "cũ"
+// khi document meta/vocabVersion trên Firestore đổi giá trị. Vocab hầu như không
+// đổi (chỉ đổi khi import file hoặc tự thêm từ mới qua tra từ điển), nên cache
+// gần như tồn tại vĩnh viễn — mỗi lần mở app chỉ tốn 1 read nhẹ để so version,
+// thay vì đọc lại toàn bộ collection (có thể hàng nghìn document).
 
-import { getDocs, collection } from "firebase/firestore";
+import { getDocs, getDoc, doc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+<<<<<<< HEAD
 const CACHE_KEY = "vocab_cache_v5";
 const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 tiếng
+=======
+const CACHE_KEY = "vocab_cache_v6";
+const VERSION_DOC_PATH = ["meta", "vocabVersion"] as const;
+>>>>>>> f5925cc (update vocab: version-check cache thay TTL)
 
 export type CachedVocabItem = {
   id: string;
@@ -27,30 +34,24 @@ export type CachedVocabItem = {
 };
 
 type CacheEntry = {
-  ts: number;
+  version: number;
   data: CachedVocabItem[];
 };
 
-function readCache(): CachedVocabItem[] | null {
+function readCache(): CacheEntry | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    const entry: CacheEntry = JSON.parse(raw);
-    if (Date.now() - entry.ts > CACHE_TTL) {
-      localStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-    return entry.data;
+    return JSON.parse(raw) as CacheEntry;
   } catch {
     return null;
   }
 }
 
-function writeCache(data: CachedVocabItem[]): void {
+function writeCache(entry: CacheEntry): void {
   if (typeof window === "undefined") return;
   try {
-    const entry: CacheEntry = { ts: Date.now(), data };
     localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
     // localStorage có thể đầy — bỏ qua, không crash app
@@ -62,13 +63,34 @@ export function invalidateVocabCache(): void {
   localStorage.removeItem(CACHE_KEY);
 }
 
+async function fetchRemoteVersion(): Promise<number> {
+  try {
+    const snap = await getDoc(doc(db, ...VERSION_DOC_PATH));
+    if (!snap.exists()) return 0;
+    return Number(snap.data().version) || 0;
+  } catch {
+    // Nếu không đọc được version (lỗi mạng, chưa tạo doc...) → coi như 0,
+    // sẽ ưu tiên cache cũ nếu có, tránh crash app.
+    return 0;
+  }
+}
+
 /**
- * Lấy toàn bộ vocabulary — ưu tiên cache localStorage (TTL 30 phút).
- * Chỉ gọi Firestore khi cache miss hoặc hết hạn.
+ * Lấy toàn bộ vocabulary — ưu tiên cache localStorage.
+ * Chỉ đọc lại toàn bộ Firestore khi:
+ *  - Chưa có cache, hoặc
+ *  - Version trên Firestore (meta/vocabVersion) khác version đã cache
+ *    (nghĩa là vừa import file mới hoặc vừa tự thêm từ qua tra từ điển).
+ * Mỗi lần gọi vẫn tốn 1 read nhẹ để kiểm tra version — chi phí không đáng kể
+ * so với đọc cả collection.
  */
 export async function getAllVocabulary(): Promise<CachedVocabItem[]> {
   const cached = readCache();
-  if (cached) return cached;
+  const remoteVersion = await fetchRemoteVersion();
+
+  if (cached && cached.version === remoteVersion) {
+    return cached.data;
+  }
 
   const snap = await getDocs(collection(db, "vocabulary"));
   const data: CachedVocabItem[] = snap.docs.map((d) => {
@@ -90,6 +112,6 @@ export async function getAllVocabulary(): Promise<CachedVocabItem[]> {
     };
   });
 
-  writeCache(data);
+  writeCache({ version: remoteVersion, data });
   return data;
 }
