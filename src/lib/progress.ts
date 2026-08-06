@@ -234,16 +234,19 @@ export async function getLearnedWordIds(userId: string): Promise<Set<string>> {
   return new Set(docs.filter((d) => d.id !== "stats").map((d) => d.id));
 }
 
-// Chỉ lấy wordId có status = "learned" (bao gồm cả các từ trùng ở khóa khác)
+// Lấy wordId có status = "learned" HOẶC "mastered" (bao gồm cả các từ trùng ở khóa khác)
+// Dùng để tính % tiến độ bài học — từ đã "mastered" vẫn phải tính là đã học.
 export async function getLearnedOnlyWordIds(userId: string): Promise<Set<string>> {
   const [docs, allVocab] = await Promise.all([
     fetchUserProgressDocs(userId),
     getAllVocabulary(),
   ]);
 
-  // Tập hợp các ID đã có progress "learned" trực tiếp
+  // Tập hợp các ID đã có progress "learned" hoặc "mastered" trực tiếp
   const directLearnedIds = new Set(
-    docs.filter((d) => d.id !== "stats" && d.status === "learned").map((d) => d.id)
+    docs
+      .filter((d) => d.id !== "stats" && (d.status === "learned" || d.status === "mastered"))
+      .map((d) => d.id)
   );
 
   // Tạo tập hợp các chữ từ vựng (chữ Nhật như "お土産") đã được học
@@ -560,4 +563,4 @@ export async function getUserWordStatuses(
   }
 
   return result;
-}
+}
