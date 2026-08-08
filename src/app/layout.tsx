@@ -15,10 +15,10 @@ export default function RootLayout({
   return (
     <html lang="vi" suppressHydrationWarning>
       <head>
-        {/* Prevent theme flash on reload */}
+        {/* Synchronize theme and status bar color before paint to prevent splash screen mismatch */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var isDark=t==='dark'||((!t)&&d);if(isDark){document.documentElement.classList.add('dark');var m=document.getElementById('theme-color-meta');if(m)m.setAttribute('content','#0c1410');}}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var isDark=t==='dark'||((!t)&&d);var c=isDark?'#0c1410':'#f6fdf8';if(isDark){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}var m=document.getElementById('theme-color-meta');if(m){m.setAttribute('content',c);}}catch(e){}})()`,
           }}
         />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />

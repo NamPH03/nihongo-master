@@ -8,11 +8,12 @@ export default function SplashScreen() {
   const [isDark, setIsDark] = useState(true); // default dark để tránh flash
 
   useEffect(() => {
-    // Đọc theme từ localStorage ngay lập tức (trước khi render)
+    // Đọc theme chính xác từ document.documentElement (đã set từ script head) hoặc localStorage
     try {
+      const isDocDark = document.documentElement.classList.contains("dark");
       const savedTheme = localStorage.getItem("theme");
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const darkMode = savedTheme === "dark" || (!savedTheme && prefersDark);
+      const darkMode = isDocDark || savedTheme === "dark" || (!savedTheme && prefersDark);
       setIsDark(darkMode);
     } catch {
       setIsDark(true);
