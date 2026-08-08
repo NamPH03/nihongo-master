@@ -128,7 +128,7 @@ body {
 
 @media (max-width: 767px) {
   #app-scroll {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 5.2rem);
+    padding-bottom: calc(max(16px, env(safe-area-inset-bottom)) + 4.5rem);
   }
 }
 

@@ -159,9 +159,9 @@ export default function Navbar({}: NavbarProps) {
                background: "var(--surface)", 
                backdropFilter: "blur(12px)",
                WebkitBackdropFilter: "blur(12px)",
-               paddingBottom: "env(safe-area-inset-bottom)",
+               paddingBottom: "max(12px, env(safe-area-inset-bottom))",
              }}>
-          <div className="flex justify-around items-center h-16 px-2">
+          <div className="flex justify-around items-center h-14 px-2">
             {mobileLinks.map((link) => {
               const isActive = pathname === link.href;
               const Icon = link.icon;
