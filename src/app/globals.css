@@ -76,6 +76,21 @@ html {
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
+
+  /* Fluid typography scaling dựa theo kích thước màn hình */
+  font-size: clamp(14px, 0.95vw + 10px, 19px);
+}
+
+/* Scaling trên màn 2K / 4K */
+@media (min-width: 1920px) {
+  html {
+    font-size: clamp(18px, 1.05vw + 2px, 24px);
+  }
+}
+@media (min-width: 2560px) {
+  html {
+    font-size: clamp(21px, 1.1vw, 28px);
+  }
 }
 
 body {
@@ -273,15 +288,33 @@ input::placeholder, textarea::placeholder {
 
   /* === SECTION === */
   .page-container {
-    max-width: 48rem;
+    max-width: 52rem;
     margin: 0 auto;
     padding: 2rem 1.5rem;
   }
 
   .page-container-wide {
-    max-width: 72rem;
+    max-width: 80rem;
     margin: 0 auto;
     padding: 2rem 1.5rem;
+  }
+
+  @media (min-width: 1920px) {
+    .page-container {
+      max-width: 64rem;
+    }
+    .page-container-wide {
+      max-width: 96rem;
+    }
+  }
+
+  @media (min-width: 2560px) {
+    .page-container {
+      max-width: 76rem;
+    }
+    .page-container-wide {
+      max-width: 110rem;
+    }
   }
 
   /* === SR LEVEL COLORS === */

@@ -119,7 +119,7 @@ export default function DashboardPage() {
     <div className="min-h-[100dvh] bg-page pb-20 md:pb-6">
       <Navbar userEmail={userEmail} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="max-w-4xl 2xl:max-w-5xl mx-auto px-4 sm:px-6 py-6">
 
         {/* Greeting & Streak */}
         <div className="mb-6 animate-fade-up flex justify-between items-center">
